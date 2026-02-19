@@ -62,7 +62,7 @@ class ConnectionManager {
     this.ipConnections.set(ip, ipConns);
 
     this.totalConnections++;
-    logger.info(`Connection added: ${socketId} (user: ${telegramId}, ip: ${ip}) — total: ${this.totalConnections}`);
+    logger.debug(`Connection added: ${socketId} — total: ${this.totalConnections}`);
     return true;
   }
 
@@ -161,7 +161,8 @@ class ConnectionManager {
    * Get all socket IDs in a game
    */
   getGamePlayers(gameId) {
-    return this.gameRooms.get(gameId) || new Set();
+    const room = this.gameRooms.get(gameId);
+    return room ? new Set(room) : new Set();
   }
 
   /**
@@ -176,7 +177,8 @@ class ConnectionManager {
    * Find socketId by telegramId
    */
   getSocketsByUser(telegramId) {
-    return this.userConnections.get(telegramId) || new Set();
+    const sockets = this.userConnections.get(telegramId);
+    return sockets ? new Set(sockets) : new Set();
   }
 
   /**

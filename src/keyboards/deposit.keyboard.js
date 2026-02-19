@@ -1,5 +1,6 @@
 const { Markup } = require('telegraf');
 const { EMOJI } = require('../utils/constants');
+const { DASHBOARD_URL } = require('../config/env');
 
 /**
  * Payment method selection inline keyboard
@@ -40,9 +41,10 @@ const depositAmountKeyboard = () => {
  * Admin deposit notification (no approve/reject buttons — use dashboard)
  */
 const depositConfirmKeyboard = (depositId, userId) => {
+  const url = `${DASHBOARD_URL}/deposits?depositId=${encodeURIComponent(depositId)}&userId=${encodeURIComponent(userId)}`;
   return Markup.inlineKeyboard([
     [
-      Markup.button.url('📊 Open Dashboard', 'http://localhost:5173/deposits')
+      Markup.button.url('📊 Open Dashboard', url)
     ]
   ]);
 };

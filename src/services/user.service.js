@@ -71,7 +71,7 @@ const updateBalance = async (telegramId, wallet, amount) => {
     .set({ [wallet === 'main' ? 'mainWallet' : 'playWallet']: sql`${field} + ${amount}` })
     .where(eq(users.telegramId, telegramId))
     .returning();
-  logger.info(`Balance updated for ${telegramId}: ${wallet} ${amount > 0 ? '+' : ''}${amount}`);
+  logger.debug(`Balance updated: ${wallet} ${amount > 0 ? '+' : ''}${amount}`);
   return updated;
 };
 
@@ -145,7 +145,7 @@ const verifyPhone = async (telegramId, phone) => {
   if (!user.bonusClaimed) {
     updates.playWallet = sql`${users.playWallet} + 5`;
     updates.bonusClaimed = true;
-    logger.info(`Welcome bonus of 5 granted to user ${telegramId}`);
+    logger.debug(`Welcome bonus of 5 granted`);
   }
 
   const [updated] = await db.update(users)

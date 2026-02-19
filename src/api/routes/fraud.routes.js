@@ -1,6 +1,6 @@
 const { Router } = require('express');
 const { eq, desc } = require('drizzle-orm');
-const { db } = require('../../database');
+const { db, pool } = require('../../database');
 const { fraudAlerts, auditLogs } = require('../../database/schema');
 
 const router = Router();
@@ -31,29 +31,52 @@ router.get('/', async (req, res) => {
 
 // POST /api/fraud-alerts/:id/resolve — resolve an alert
 router.post('/:id/resolve', async (req, res) => {
+  const client = await pool.connect();
+  
   try {
+    await client.query('BEGIN');
+    
     const alertId = parseInt(req.params.id);
 
-    const [updated] = await db.update(fraudAlerts)
-      .set({ resolved: true, resolvedBy: req.adminId })
-      .where(eq(fraudAlerts.id, alertId))
-      .returning();
+    // Update alert
+    const updateResult = await client.query(
+      `UPDATE fraud_alerts 
+       SET resolved = true, resolved_by = $1 
+       WHERE id = $2 
+       RETURNING *`,
+      [req.adminId, alertId]
+    );
 
-    if (!updated) return res.status(404).json({ error: 'Alert not found' });
+    if (updateResult.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Alert not found' });
+    }
 
-    await db.insert(auditLogs).values({
-      adminId: req.adminId,
-      adminName: req.adminName,
-      actionType: 'fraud_alert_resolved',
-      targetUser: String(updated.telegramId),
-      details: `Alert: ${updated.alertType}`,
-      ipAddress: req.adminIp,
-    });
+    const updated = updateResult.rows[0];
+
+    // Insert audit log
+    await client.query(
+      `INSERT INTO audit_logs (admin_id, admin_name, action_type, target_user, details, ip_address)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [
+        req.adminId,
+        req.adminName,
+        'fraud_alert_resolved',
+        String(updated.telegram_id),
+        `Alert: ${updated.alert_type}`,
+        req.adminIp
+      ]
+    );
+
+    await client.query('COMMIT');
 
     res.json({ success: true });
   } catch (error) {
+    await client.query('ROLLBACK');
     console.error('Resolve alert error:', error);
     res.status(500).json({ error: 'Failed to resolve alert' });
+  } finally {
+    client.release();
   }
 });
 

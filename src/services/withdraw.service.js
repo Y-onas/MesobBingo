@@ -1,5 +1,5 @@
 const { eq, sql, desc } = require('drizzle-orm');
-const { db } = require('../database');
+const { db, pool } = require('../database');
 const { withdrawals, users } = require('../database/schema');
 const userService = require('./user.service');
 const logger = require('../utils/logger');
@@ -7,38 +7,59 @@ const { MIN_WITHDRAW } = require('../config/env');
 
 /**
  * Create a withdrawal request (now persisted to PostgreSQL, not in-memory)
+ * Uses transaction with SELECT FOR UPDATE to prevent race conditions
  */
 const createWithdrawal = async (telegramId, amount, method, accountNumber) => {
+  const client = await pool.connect();
   try {
-    const user = await userService.getUser(telegramId);
+    await client.query('BEGIN');
+
+    // Lock user row for update
+    const { rows: [user] } = await client.query(
+      'SELECT * FROM users WHERE telegram_id = $1 FOR UPDATE',
+      [telegramId]
+    );
+
     if (!user) {
+      await client.query('ROLLBACK');
       throw new Error('User not found');
     }
 
     if (amount < MIN_WITHDRAW) {
+      await client.query('ROLLBACK');
       throw new Error(`Minimum withdrawal is ${MIN_WITHDRAW} ብር`);
     }
 
-    if (Number(user.mainWallet) < amount) {
+    const mainBalance = Number(user.main_wallet);
+    if (mainBalance < amount) {
+      await client.query('ROLLBACK');
       throw new Error('Insufficient balance');
     }
 
-    // Deduct from wallet immediately (hold)
-    await userService.updateBalance(telegramId, 'main', -amount);
+    // Deduct from wallet atomically
+    await client.query(
+      'UPDATE users SET main_wallet = main_wallet - $1 WHERE telegram_id = $2',
+      [amount, telegramId]
+    );
 
-    const [withdrawal] = await db.insert(withdrawals).values({
-      telegramId,
-      amount: String(amount),
-      method,
-      accountNumber,
-      status: 'pending',
-    }).returning();
+    // Create withdrawal record
+    const { rows: [withdrawal] } = await client.query(
+      `INSERT INTO withdrawals (telegram_id, amount, method, account_number, status) 
+       VALUES ($1, $2, $3, $4, $5) 
+       RETURNING *`,
+      [telegramId, String(amount), method, accountNumber, 'pending']
+    );
+
+    await client.query('COMMIT');
 
     logger.info(`Withdrawal created: ${withdrawal.id} - ${amount} to ${accountNumber}`);
     return withdrawal;
   } catch (error) {
+    await client.query('ROLLBACK');
     logger.error('Error creating withdrawal:', error);
     throw error;
+  } finally {
+    client.release();
   }
 };
 
@@ -47,25 +68,24 @@ const createWithdrawal = async (telegramId, amount, method, accountNumber) => {
  */
 const completeWithdrawal = async (withdrawalId, adminId) => {
   try {
-    const rows = await db.select().from(withdrawals).where(eq(withdrawals.id, withdrawalId)).limit(1);
-    const withdrawal = rows[0];
-    if (!withdrawal || (withdrawal.status !== 'pending' && withdrawal.status !== 'under_review')) {
-      throw new Error('Withdrawal not found or already processed');
-    }
-
+    // Atomic update: only complete if status is pending or under_review
     const [updated] = await db.update(withdrawals)
       .set({
-        status: 'completed',
+        status: 'approved',
         processedBy: adminId,
         processedAt: new Date(),
       })
-      .where(eq(withdrawals.id, withdrawalId))
+      .where(sql`${withdrawals.id} = ${withdrawalId} AND ${withdrawals.status} IN ('pending', 'under_review')`)
       .returning();
+
+    if (!updated) {
+      throw new Error('Withdrawal not found or already processed');
+    }
 
     // Update user's total withdrawn
     await db.update(users)
-      .set({ totalWithdrawn: sql`${users.totalWithdrawn} + ${Number(withdrawal.amount)}` })
-      .where(eq(users.telegramId, withdrawal.telegramId));
+      .set({ totalWithdrawn: sql`${users.totalWithdrawn} + ${Number(updated.amount)}` })
+      .where(eq(users.telegramId, updated.telegramId));
 
     logger.info(`Withdrawal completed: ${withdrawalId} by admin ${adminId}`);
     return updated;
@@ -80,12 +100,7 @@ const completeWithdrawal = async (withdrawalId, adminId) => {
  */
 const rejectWithdrawal = async (withdrawalId, adminId, reason = 'Rejected') => {
   try {
-    const rows = await db.select().from(withdrawals).where(eq(withdrawals.id, withdrawalId)).limit(1);
-    const withdrawal = rows[0];
-    if (!withdrawal || withdrawal.status !== 'pending') {
-      throw new Error('Withdrawal not found or already processed');
-    }
-
+    // Atomic update: only reject if status is pending or under_review
     const [updated] = await db.update(withdrawals)
       .set({
         status: 'rejected',
@@ -93,11 +108,15 @@ const rejectWithdrawal = async (withdrawalId, adminId, reason = 'Rejected') => {
         processedAt: new Date(),
         rejectionReason: reason,
       })
-      .where(eq(withdrawals.id, withdrawalId))
+      .where(sql`${withdrawals.id} = ${withdrawalId} AND ${withdrawals.status} IN ('pending', 'under_review')`)
       .returning();
 
+    if (!updated) {
+      throw new Error('Withdrawal not found or already processed');
+    }
+
     // Refund the amount
-    await userService.updateBalance(withdrawal.telegramId, 'main', Number(withdrawal.amount));
+    await userService.updateBalance(updated.telegramId, 'main', Number(updated.amount));
 
     logger.info(`Withdrawal rejected and refunded: ${withdrawalId} by admin ${adminId}`);
     return updated;

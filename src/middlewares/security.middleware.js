@@ -2,11 +2,41 @@ const userService = require('../services/user.service');
 const logger = require('../utils/logger');
 
 // Track rapid actions for flood detection
+// NOTE: For multi-instance deployments, consider using Redis for shared rate-limiting state
 const actionLog = new Map();
 const FLOOD_WINDOW_MS = 10000; // 10 seconds
 const FLOOD_LIMIT = 10; // max actions in window
 const tempBlocked = new Map();
 const BLOCK_DURATION_MS = 30000; // 30 second temp block
+
+// Periodic cleanup every 60 seconds to prevent memory leaks
+setInterval(() => {
+  const now = Date.now();
+  
+  // Clean up stale action logs
+  for (const [userId, actions] of actionLog) {
+    const recent = actions.filter(t => now - t < FLOOD_WINDOW_MS);
+    if (recent.length === 0) {
+      actionLog.delete(userId);
+    } else {
+      actionLog.set(userId, recent);
+    }
+  }
+  
+  // Clean up expired blocks
+  for (const [userId, blockUntil] of tempBlocked) {
+    if (now >= blockUntil) {
+      tempBlocked.delete(userId);
+    }
+  }
+  
+  // Log cleanup stats if any entries were removed
+  const actionLogSize = actionLog.size;
+  const tempBlockedSize = tempBlocked.size;
+  if (actionLogSize > 0 || tempBlockedSize > 0) {
+    logger.debug(`Rate limit cleanup: ${actionLogSize} active users, ${tempBlockedSize} blocked users`);
+  }
+}, 60000);
 
 /**
  * Bot protection middleware — blocks bots, forwarded-from-bot messages
@@ -74,11 +104,14 @@ const bannedCheck = async (ctx, next) => {
       await ctx.reply('🚫 Your account has been suspended. Contact support for assistance.').catch(() => {});
       return;
     }
+    
+    return next();
   } catch (error) {
     logger.error('Error in banned check:', error);
+    // Fail-closed: block access on error to prevent bypassing ban check
+    await ctx.reply('⚠️ Service temporarily unavailable. Please try again.').catch(() => {});
+    return;
   }
-
-  return next();
 };
 
 /**

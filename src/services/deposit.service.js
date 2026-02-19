@@ -18,7 +18,7 @@ const createDeposit = async (telegramId, amount, method, screenshotFileId = null
       smsText,
       status: 'pending',
     }).returning();
-    logger.info(`Deposit created: ${telegramId} - ${amount} via ${method}`);
+    logger.debug(`Deposit created: ${amount} via ${method}`);
     return deposit;
   } catch (error) {
     logger.error('Error creating deposit:', error);
@@ -31,34 +31,33 @@ const createDeposit = async (telegramId, amount, method, screenshotFileId = null
  */
 const approveDeposit = async (depositId, adminId) => {
   try {
-    const rows = await db.select().from(deposits).where(eq(deposits.id, depositId)).limit(1);
-    const deposit = rows[0];
-    if (!deposit || (deposit.status !== 'pending' && deposit.status !== 'under_review')) {
-      throw new Error('Deposit not found or already processed');
-    }
-
+    // Atomic update: only approve if status is pending or under_review
     const [updated] = await db.update(deposits)
       .set({
         status: 'approved',
         processedBy: adminId,
         processedAt: new Date(),
       })
-      .where(eq(deposits.id, depositId))
+      .where(sql`${deposits.id} = ${depositId} AND ${deposits.status} IN ('pending', 'under_review')`)
       .returning();
 
+    if (!updated) {
+      throw new Error('Deposit not found or already processed');
+    }
+
     // Add amount to user's main wallet
-    await userService.updateBalance(deposit.telegramId, 'main', Number(deposit.amount));
+    await userService.updateBalance(updated.telegramId, 'main', Number(updated.amount));
 
     // Increment deposit count and total
     await db.update(users)
       .set({
         depositCount: sql`${users.depositCount} + 1`,
-        totalDeposited: sql`${users.totalDeposited} + ${Number(deposit.amount)}`,
+        totalDeposited: sql`${users.totalDeposited} + ${Number(updated.amount)}`,
       })
-      .where(eq(users.telegramId, deposit.telegramId));
+      .where(eq(users.telegramId, updated.telegramId));
 
     // Process referral bonus
-    await userService.processReferralBonus(deposit.telegramId);
+    await userService.processReferralBonus(updated.telegramId);
 
     logger.info(`Deposit approved: ${depositId} by admin ${adminId}`);
     return updated;
@@ -73,6 +72,7 @@ const approveDeposit = async (depositId, adminId) => {
  */
 const rejectDeposit = async (depositId, adminId, reason = 'Rejected') => {
   try {
+    // Atomic update: only reject if status is pending or under_review
     const [updated] = await db.update(deposits)
       .set({
         status: 'rejected',
@@ -80,8 +80,12 @@ const rejectDeposit = async (depositId, adminId, reason = 'Rejected') => {
         processedAt: new Date(),
         rejectionReason: reason,
       })
-      .where(eq(deposits.id, depositId))
+      .where(sql`${deposits.id} = ${depositId} AND ${deposits.status} IN ('pending', 'under_review')`)
       .returning();
+
+    if (!updated) {
+      throw new Error('Deposit not found or already processed');
+    }
 
     logger.info(`Deposit rejected: ${depositId} by admin ${adminId}`);
     return updated;

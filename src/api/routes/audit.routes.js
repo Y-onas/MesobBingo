@@ -10,6 +10,12 @@ router.get('/', async (req, res) => {
   try {
     const { search, limit = 50, offset = 0 } = req.query;
 
+    // Validate and clamp pagination parameters
+    const lim = Number.parseInt(limit, 10);
+    const off = Number.parseInt(offset, 10);
+    const safeLimit = Number.isFinite(lim) ? Math.min(Math.max(lim, 1), 200) : 50;
+    const safeOffset = Number.isFinite(off) ? Math.max(off, 0) : 0;
+
     let query = db.select().from(auditLogs).orderBy(desc(auditLogs.timestamp));
 
     if (search && search.trim()) {
@@ -21,7 +27,7 @@ router.get('/', async (req, res) => {
       );
     }
 
-    const rows = await query.limit(parseInt(limit)).offset(parseInt(offset));
+    const rows = await query.limit(safeLimit).offset(safeOffset);
 
     const result = rows.map(log => ({
       id: log.id,

@@ -41,50 +41,58 @@ Please enter the deposit amount (e.g., 100 or 500):
  * Handle deposit amount after screenshot
  */
 const handleDepositAmount = async (ctx, amount) => {
-  const session = ctx.session || {};
-  const fileId = session.screenshotFileId;
-  const method = session.depositMethod || 'telebirr';
-  
-  // Create deposit request
-  const deposit = await depositService.createDeposit(
-    ctx.from.id,
-    amount,
-    method,
-    fileId,
-    null,
-    null // no SMS text when using screenshot
-  );
-  
-  ctx.session.state = SESSION_STATES.NONE;
-  ctx.session.screenshotFileId = null;
-  ctx.session.depositMethod = null;
-  
-  await ctx.reply(`✅ *Deposit Request Submitted*
+  try {
+    const session = ctx.session || {};
+    const fileId = session.screenshotFileId;
+    const method = session.depositMethod || 'telebirr';
+    
+    // Create deposit request
+    const deposit = await depositService.createDeposit(
+      ctx.from.id,
+      amount,
+      method,
+      fileId,
+      null,
+      null // no SMS text when using screenshot
+    );
+    
+    ctx.session.state = SESSION_STATES.NONE;
+    ctx.session.screenshotFileId = null;
+    ctx.session.depositMethod = null;
+    
+    await ctx.reply(`✅ *Deposit Request Submitted*
 
 💰 Amount: ${amount.toFixed(2)} ${CURRENCY}
 📱 Method: ${method.toUpperCase()}
 📋 Status: Pending
 
 Your deposit will be reviewed shortly.`, { 
-    parse_mode: 'Markdown',
-    ...mainKeyboard()
-  });
-  
-  // Forward to admins
-  for (const adminId of ADMIN_IDS) {
-    try {
-      await ctx.telegram.sendPhoto(adminId, fileId, {
-        caption: `💳 *New ${method.toUpperCase()} Deposit*
+      parse_mode: 'Markdown',
+      ...mainKeyboard()
+    });
+    
+    // Forward to admins
+    for (const adminId of ADMIN_IDS) {
+      try {
+        await ctx.telegram.sendPhoto(adminId, fileId, {
+          caption: `💳 *New ${method.toUpperCase()} Deposit*
 
 👤 User: ${ctx.from.first_name || ctx.from.id}
 🆔 ID: ${ctx.from.id}
 💰 Amount: ${amount.toFixed(2)} ${CURRENCY}`,
-        parse_mode: 'Markdown',
-        ...depositConfirmKeyboard(String(deposit.id), ctx.from.id)
-      });
-    } catch (err) {
-      // Admin may have blocked the bot
+          parse_mode: 'Markdown',
+          ...depositConfirmKeyboard(String(deposit.id), ctx.from.id)
+        });
+      } catch (err) {
+        // Admin may have blocked the bot
+      }
     }
+  } catch (error) {
+    console.error('Error in deposit amount handler:', error);
+    ctx.session.state = SESSION_STATES.NONE;
+    ctx.session.screenshotFileId = null;
+    ctx.session.depositMethod = null;
+    await ctx.reply('❌ An error occurred while processing your deposit. Please try again.', mainKeyboard());
   }
 };
 

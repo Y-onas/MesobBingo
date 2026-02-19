@@ -1,5 +1,5 @@
 const { Router } = require('express');
-const { eq, sql, desc } = require('drizzle-orm');
+const { eq, sql, desc, and } = require('drizzle-orm');
 const { db } = require('../../database');
 const { deposits, users, auditLogs } = require('../../database/schema');
 const depositService = require('../../services/deposit.service');
@@ -69,15 +69,18 @@ router.post('/:id/review', async (req, res) => {
     const depositId = parseInt(req.params.id);
     const adminId = req.adminId;
 
-    // Check if already locked
-    const [dep] = await db.select().from(deposits).where(eq(deposits.id, depositId)).limit(1);
-    if (!dep) return res.status(404).json({ error: 'Deposit not found' });
-    if (dep.status !== 'pending') return res.status(400).json({ error: 'Deposit is not pending' });
-
+    // Atomic lock: only update if status is 'pending'
     const [updated] = await db.update(deposits)
       .set({ status: 'under_review', assignedAdmin: adminId })
-      .where(eq(deposits.id, depositId))
+      .where(and(
+        eq(deposits.id, depositId),
+        eq(deposits.status, 'pending')
+      ))
       .returning();
+
+    if (!updated) {
+      return res.status(409).json({ error: 'Deposit is not pending or already locked' });
+    }
 
     res.json(updated);
   } catch (error) {

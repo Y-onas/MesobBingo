@@ -33,7 +33,7 @@ router.get('/', async (req, res) => {
       count: sql`count(*)`
     }).from(withdrawals)
       .where(and(
-        sql`${withdrawals.status} IN ('completed', 'approved')`,
+        eq(withdrawals.status, 'approved'),
         sql`${withdrawals.processedAt} >= CURRENT_DATE`
       ));
     const withdrawalsToday = Number(todayWithdrawalsRow[0].total);
@@ -86,7 +86,7 @@ router.get('/charts', async (req, res) => {
     const withdrawalsResult = await db.execute(sql`
       SELECT 
         TO_CHAR(created_at, 'Mon DD') as date,
-        COALESCE(SUM(CASE WHEN status IN ('completed', 'approved') THEN amount ELSE 0 END), 0) as withdrawals
+        COALESCE(SUM(CASE WHEN status = 'approved' THEN amount ELSE 0 END), 0) as withdrawals
       FROM withdrawals
       WHERE created_at >= CURRENT_DATE - INTERVAL '7 days'
       GROUP BY TO_CHAR(created_at, 'Mon DD'), DATE(created_at)

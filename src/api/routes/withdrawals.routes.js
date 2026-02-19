@@ -1,5 +1,5 @@
 const { Router } = require('express');
-const { eq, sql, desc } = require('drizzle-orm');
+const { eq, sql, desc, and } = require('drizzle-orm');
 const { db } = require('../../database');
 const { withdrawals, users, auditLogs } = require('../../database/schema');
 const withdrawService = require('../../services/withdraw.service');
@@ -52,7 +52,7 @@ router.get('/', async (req, res) => {
       payment_method: r.method,
       account_details: r.accountNumber,
       created_at: r.createdAt,
-      status: r.status === 'completed' ? 'approved' : r.status,
+      status: r.status,
       assigned_admin: r.assignedAdmin,
       rejection_reason: r.rejectionReason,
       user_wallet: Number(r.mainWallet || 0),
@@ -75,14 +75,18 @@ router.post('/:id/review', async (req, res) => {
     const withdrawalId = parseInt(req.params.id);
     const adminId = req.adminId;
 
-    const [w] = await db.select().from(withdrawals).where(eq(withdrawals.id, withdrawalId)).limit(1);
-    if (!w) return res.status(404).json({ error: 'Withdrawal not found' });
-    if (w.status !== 'pending') return res.status(400).json({ error: 'Withdrawal is not pending' });
-
+    // Atomic lock: only update if status is 'pending'
     const [updated] = await db.update(withdrawals)
       .set({ status: 'under_review', assignedAdmin: adminId })
-      .where(eq(withdrawals.id, withdrawalId))
+      .where(and(
+        eq(withdrawals.id, withdrawalId),
+        eq(withdrawals.status, 'pending')
+      ))
       .returning();
+
+    if (!updated) {
+      return res.status(409).json({ error: 'Withdrawal is not pending or already locked' });
+    }
 
     res.json(updated);
   } catch (error) {
@@ -97,6 +101,13 @@ router.post('/:id/approve', async (req, res) => {
     const withdrawalId = parseInt(req.params.id);
     const adminId = req.adminId;
     const adminName = req.adminName;
+
+    // Verify ownership and status
+    const [w] = await db.select().from(withdrawals).where(eq(withdrawals.id, withdrawalId)).limit(1);
+    if (!w) return res.status(404).json({ error: 'Withdrawal not found' });
+    if (w.status !== 'under_review' || w.assignedAdmin !== adminId) {
+      return res.status(409).json({ error: 'Withdrawal not locked by this admin' });
+    }
 
     const result = await withdrawService.completeWithdrawal(withdrawalId, adminId);
 
@@ -129,6 +140,13 @@ router.post('/:id/reject', async (req, res) => {
 
     if (!reason || !reason.trim()) {
       return res.status(400).json({ error: 'Rejection reason is required' });
+    }
+
+    // Verify ownership and status
+    const [w] = await db.select().from(withdrawals).where(eq(withdrawals.id, withdrawalId)).limit(1);
+    if (!w) return res.status(404).json({ error: 'Withdrawal not found' });
+    if (w.status !== 'under_review' || w.assignedAdmin !== adminId) {
+      return res.status(409).json({ error: 'Withdrawal not locked by this admin' });
     }
 
     const result = await withdrawService.rejectWithdrawal(withdrawalId, adminId, reason);

@@ -154,14 +154,17 @@ const register = (bot) => {
   bot.action('admin_back', handleAdminBack);
   bot.action('admin_users', handleAdminStats); // Reuse stats for now
   bot.action('admin_pending_withdrawals', async (ctx) => {
+    if (!isAdmin(ctx.from.id)) return ctx.answerCbQuery('Unauthorized');
     await ctx.answerCbQuery('Coming soon...');
   });
   bot.action('admin_broadcast', async (ctx) => {
+    if (!isAdmin(ctx.from.id)) return ctx.answerCbQuery('Unauthorized');
     const { broadcastTypeKeyboard } = require('../keyboards/admin.keyboard');
     await ctx.answerCbQuery();
     await ctx.editMessageText('📢 Select broadcast type:', broadcastTypeKeyboard());
   });
   bot.action('admin_add_bonus', async (ctx) => {
+    if (!isAdmin(ctx.from.id)) return ctx.answerCbQuery('Unauthorized');
     await ctx.answerCbQuery();
     await ctx.reply('Use /bonus [userId] [amount] to add bonus.');
   });

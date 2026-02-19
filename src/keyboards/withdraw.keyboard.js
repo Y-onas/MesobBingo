@@ -1,4 +1,5 @@
 const { Markup } = require('telegraf');
+const { DASHBOARD_URL } = require('../config/env');
 
 /**
  * Withdraw bank selection keyboard
@@ -31,9 +32,10 @@ const withdrawConfirmKeyboard = (amount) => {
  * Admin withdraw notification (no approve/reject buttons — use dashboard)
  */
 const adminWithdrawKeyboard = (withdrawId, userId) => {
+  const url = `${DASHBOARD_URL}/withdrawals?withdrawId=${encodeURIComponent(withdrawId)}&userId=${encodeURIComponent(userId)}`;
   return Markup.inlineKeyboard([
     [
-      Markup.button.url('📊 Open Dashboard', 'http://localhost:5173/withdrawals')
+      Markup.button.url('📊 Open Dashboard', url)
     ]
   ]);
 };

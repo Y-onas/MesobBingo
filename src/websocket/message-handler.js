@@ -64,7 +64,7 @@ function registerHandlers(socket, engine, connManager, rateLimiter) {
 
   // ─── JOIN_GAME ─────────────────────────────────────────────────
   socket.on(SOCKET_EVENTS.JOIN_GAME, withRateLimit(async (data) => {
-    logger.info(`JOIN_GAME event received from ${socketId} (user: ${telegramId}), data:`, data);
+    logger.debug(`JOIN_GAME event received from ${socketId}`);
     
     if (!rateLimiter.checkJoinGame(socketId)) {
       socket.emit(SOCKET_EVENTS.ERROR, { message: 'Join rate limit exceeded' });
@@ -78,16 +78,16 @@ function registerHandlers(socket, engine, connManager, rateLimiter) {
       return;
     }
 
-    logger.info(`User ${telegramId} attempting to join room ${validation.data.roomId}`);
+    logger.debug(`Attempting to join room ${validation.data.roomId}`);
     const result = await engine.joinGame(socketId, telegramId, validation.data.roomId);
 
     if (!result.success) {
-      logger.error(`JOIN_GAME failed for ${telegramId}:`, result.error);
+      logger.error(`JOIN_GAME failed:`, result.error);
       socket.emit(SOCKET_EVENTS.ERROR, { message: result.error });
       return;
     }
 
-    logger.info(`User ${telegramId} successfully joined game ${result.gameId}`);
+    logger.debug(`Successfully joined game ${result.gameId}`);
 
     // Join Socket.IO room for broadcasts
     socket.join(`game:${result.gameId}`);
@@ -204,12 +204,12 @@ function registerHandlers(socket, engine, connManager, rateLimiter) {
     const meta = connManager.getConnection(socketId);
     if (meta && meta.gameId) {
       // Don't refund during active game — player can reconnect
-      logger.info(`Player ${telegramId} disconnected from game ${meta.gameId} (reason: ${reason})`);
+      logger.debug(`Player disconnected from game ${meta.gameId} (reason: ${reason})`);
     }
     
     connManager.removeConnection(socketId);
     rateLimiter.remove(socketId);
-    logger.info(`Disconnected: ${socketId} (user: ${telegramId}, reason: ${reason})`);
+    logger.debug(`Disconnected: ${socketId} (reason: ${reason})`);
   });
 }
 

@@ -20,7 +20,9 @@ const pool = new Pool({
   max: 20,
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 5000,
-  ssl: { rejectUnauthorized: false },
+  ssl: { 
+    rejectUnauthorized: process.env.NODE_ENV === 'development' ? false : true 
+  },
 });
 
 pool.on('error', (err) => {
@@ -29,14 +31,16 @@ pool.on('error', (err) => {
 
 // Health check
 const checkDbHealth = async () => {
+  let client;
   try {
-    const client = await pool.connect();
+    client = await pool.connect();
     await client.query('SELECT 1');
-    client.release();
     return true;
   } catch (err) {
     logger.error('DB health check failed:', err);
     return false;
+  } finally {
+    if (client) client.release();
   }
 };
 

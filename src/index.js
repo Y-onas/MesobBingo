@@ -41,11 +41,16 @@ const main = async () => {
     logger.info('Press Ctrl+C to stop');
 
     // ─── Graceful Shutdown ────────────────────────────────────────
-    const gracefulShutdown = async (signal) => {
+    let shuttingDown = false;
+
+    const gracefulShutdown = async (signal, exitCode = 0) => {
+      if (shuttingDown) return;
+      shuttingDown = true;
+
       logger.info(`${signal} received — starting graceful shutdown...`);
 
       // 1. Stop accepting new connections
-      httpServer.close();
+      await new Promise((resolve) => httpServer.close(resolve));
 
       // 2. Shut down Socket.IO (finishes active games, disconnects clients)
       await shutdownSocketServer();
@@ -62,7 +67,7 @@ const main = async () => {
       }
 
       logger.info('Graceful shutdown complete');
-      process.exit(0);
+      process.exit(exitCode);
     };
 
     process.once('SIGINT', () => gracefulShutdown('SIGINT'));
@@ -82,7 +87,7 @@ const main = async () => {
         }
       } catch (e) { /* ignore */ }
 
-      await gracefulShutdown('uncaughtException');
+      await gracefulShutdown('uncaughtException', 1);
     });
 
     process.on('unhandledRejection', (reason, promise) => {

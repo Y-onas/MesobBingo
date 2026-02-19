@@ -44,7 +44,7 @@ const generateToken = (telegramId, username = 'user', expiresIn = 3600000) => {
     // Encode as Base64 JSON string
     const token = Buffer.from(JSON.stringify(payload)).toString('base64');
     
-    logger.info(`Token generated for user ${telegramId} (${username}), expires at ${new Date(exp).toISOString()}`);
+    logger.debug(`Token generated, expires at ${new Date(exp).toISOString()}`);
     
     return token;
   } catch (error) {
@@ -53,6 +53,56 @@ const generateToken = (telegramId, username = 'user', expiresIn = 3600000) => {
   }
 };
 
+/**
+ * Verify authentication token
+ * @param {string} token - Base64-encoded token to verify
+ * @returns {Object|null} Decoded payload if valid, null if invalid
+ */
+const verifyToken = (token) => {
+  try {
+    const secret = getSecret();
+    
+    // Decode Base64 token
+    const decoded = JSON.parse(Buffer.from(token, 'base64').toString());
+    
+    // Check required fields
+    if (!decoded.telegramId || !decoded.exp || !decoded.signature) {
+      logger.debug('Token missing required fields');
+      return null;
+    }
+    
+    // Check expiration
+    if (Date.now() > decoded.exp) {
+      logger.debug('Token expired');
+      return null;
+    }
+    
+    // Extract signature and create payload for verification
+    const { signature: providedSignature, ...payload } = decoded;
+    
+    // Recompute signature using same method as generation
+    const hmac = crypto.createHmac('sha256', secret);
+    hmac.update(JSON.stringify(payload));
+    const computedSignature = hmac.digest('hex');
+    
+    // Constant-time comparison to prevent timing attacks
+    if (!crypto.timingSafeEqual(
+      Buffer.from(providedSignature, 'hex'),
+      Buffer.from(computedSignature, 'hex')
+    )) {
+      logger.debug('Token signature verification failed');
+      return null;
+    }
+    
+    // Token is valid, return payload without signature
+    return payload;
+  } catch (error) {
+    logger.debug('Token verification error:', error.message);
+    return null;
+  }
+};
+
 module.exports = {
   generateToken,
+  verifyToken,
 };

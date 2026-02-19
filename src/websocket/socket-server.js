@@ -84,7 +84,7 @@ function initSocketServer(httpServer) {
       socket.telegramUser = authResult.user;
       socket.clientIp = ip;
 
-      logger.info(`Authenticated: ${socket.id} (user: ${telegramId}, ip: ${ip})`);
+      logger.debug(`Authenticated: ${socket.id}`);
       next();
     } catch (error) {
       logger.error('Auth middleware error:', error);
@@ -94,7 +94,7 @@ function initSocketServer(httpServer) {
 
   // ─── Connection Handler ─────────────────────────────────────────
   io.on('connection', (socket) => {
-    logger.info(`Connected: ${socket.id} (user: ${socket.telegramId})`);
+    logger.debug(`Connected: ${socket.id}`);
 
     // Per-connection error boundary
     socket.on('error', (err) => {

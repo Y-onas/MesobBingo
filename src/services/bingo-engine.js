@@ -313,7 +313,7 @@ class BingoEngine {
         this._startCountdown(gameId);
       }
 
-      logger.info(`Player ${telegramId} selected board ${boardNumber} in game ${gameId}`);
+      logger.debug(`Player selected board ${boardNumber} in game ${gameId}`);
 
       return {
         success: true,
@@ -463,244 +463,6 @@ class BingoEngine {
   }
 
   /**
-   * Helper: Emit event to a specific player
-   */
-  _emitToPlayer(telegramId, event, data) {
-    const sockets = this.connectionManager.getSocketsByUser(telegramId);
-    if (sockets && sockets.size > 0) {
-      sockets.forEach(socketId => {
-        const socket = this.io.sockets.sockets.get(socketId);
-        if (socket) {
-          socket.emit(event, data);
-        }
-      });
-    }
-  }
-
-  /**
-   * Helper: Handle false claim - track, warn, or remove player
-   */
-  async _handleFalseClaim(client, game, telegramId, gameId) {
-    const currentCount = game.falseClaimCount.get(telegramId) || 0;
-    const newCount = currentCount + 1;
-    game.falseClaimCount.set(telegramId, newCount);
-
-    // Update database
-    await client.query(
-      'UPDATE game_players SET false_claim_count = $1 WHERE game_id = $2 AND telegram_id = $3',
-      [newCount, gameId, telegramId]
-    );
-
-    if (newCount === 1) {
-      // First false claim - WARNING
-      logger.warn(`False BINGO claim #1 by ${telegramId} in game ${gameId}`);
-      
-      this._emitToPlayer(telegramId, 'false_claim_warning', {
-        message: 'Invalid BINGO claim. This is your first warning. Another false claim will remove you from the game.',
-        remainingAttempts: 1
-      });
-
-      return {
-        success: false,
-        error: 'Invalid BINGO — no winning pattern found. This is your first warning.'
-      };
-    } else {
-      // Second false claim - REMOVAL
-      logger.warn(`False BINGO claim #2 by ${telegramId} in game ${gameId} - REMOVING PLAYER`);
-      
-      await this._removePlayerForFalseClaims(client, game, telegramId, gameId);
-      
-      return {
-        success: false,
-        error: 'You have been removed from the game for repeated false claims. Entry fee is not refunded.'
-      };
-    }
-  }
-
-  /**
-   * Helper: Remove player for false claims
-   */
-  async _removePlayerForFalseClaims(client, game, telegramId, gameId) {
-      // Remove from in-memory game state
-      game.players.delete(telegramId);
-      game.playerBoards.delete(telegramId);
-      game.playerCount = game.players.size;
-
-      // Update database
-      await client.query(
-        'UPDATE game_players SET removed_for_false_claims = true WHERE game_id = $1 AND telegram_id = $2',
-        [gameId, telegramId]
-      );
-
-      // Get player name
-      const [player] = await db.select().from(users).where(eq(users.telegramId, telegramId)).limit(1);
-      const playerName = player ? (player.firstName || player.username || `User ${telegramId}`) : `User ${telegramId}`;
-
-      // Redirect removed player to lobby
-      this._emitToPlayer(telegramId, 'force_leave_game', {
-        reason: 'removed_for_false_claims',
-        message: 'You have been removed from the game for repeated false BINGO claims. Entry fee is not refunded.'
-      });
-
-      // Notify all OTHER players
-      this._broadcastToGame(gameId, 'player_removed', {
-        telegramId,
-        playerName,
-        reason: 'repeated_false_claims'
-      });
-
-      logger.info(`Player ${telegramId} removed from game ${gameId} for false claims. ${game.playerCount} players remaining.`);
-
-      // Check if only 1 player remains - they win automatically
-      if (game.playerCount === 1 && game.status === GAME_STATES.PLAYING) {
-        const remainingPlayerId = Array.from(game.players)[0];
-        const remainingBoardNumber = game.playerBoards.get(remainingPlayerId);
-
-        logger.info(`Only 1 player remains in game ${gameId}. Player ${remainingPlayerId} wins automatically.`);
-
-        // Award win to remaining player
-        await this._awardWinToRemainingPlayer(client, game, remainingPlayerId, remainingBoardNumber, gameId);
-      }
-    }
-
-
-  /**
-   * Helper: Close winner window and process all pending winners
-   */
-  async _closeWinnerWindow(gameId) {
-    const game = this.activeGames.get(gameId);
-    if (!game || game.winnerWindowClosed) return;
-
-    game.winnerWindowClosed = true;
-    logger.info(`Closing winner window for game ${gameId} with ${game.pendingWinners.length} winner(s)`);
-
-    const client = await pool.connect();
-    try {
-      await client.query('BEGIN');
-
-      // Get game from DB
-      const { rows: [dbGame] } = await client.query(
-        'SELECT * FROM games WHERE id = $1',
-        [gameId]
-      );
-
-      if (!dbGame) {
-        await client.query('ROLLBACK');
-        return;
-      }
-
-      const prizePool = Number(dbGame.prize_pool);
-      const winnerCount = game.pendingWinners.length;
-      const totalPayout = Math.floor(prizePool * (game.winningPercentage / 100));
-      const prizePerWinner = Math.floor(totalPayout / winnerCount);
-
-      // Update all winners' balances
-      for (const winner of game.pendingWinners) {
-        await client.query(
-          'UPDATE users SET main_wallet = main_wallet + $1, games_won = games_won + 1 WHERE telegram_id = $2',
-          [prizePerWinner, winner.telegramId]
-        );
-        winner.winAmount = prizePerWinner;
-      }
-
-      // Update all players games_played
-      const playerIds = Array.from(game.players);
-      if (playerIds.length > 0) {
-        await client.query(
-          'UPDATE users SET games_played = games_played + 1 WHERE telegram_id = ANY($1)',
-          [playerIds]
-        );
-      }
-
-      // Prepare winners array for DB
-      const winnersData = game.pendingWinners.map(w => ({
-        telegramId: w.telegramId,
-        boardNumber: w.boardNumber,
-        timestamp: w.timestamp,
-        winAmount: prizePerWinner
-      }));
-
-      // Mark game as completed with multiple winners
-      await client.query(
-        `UPDATE games SET 
-          status = $1, 
-          winner_id = $2, 
-          winner_board_number = $3,
-          winners = $4,
-          winner_count = $5,
-          prize_per_winner = $6,
-          finished_at = NOW() 
-        WHERE id = $7`,
-        [
-          GAME_STATES.COMPLETED,
-          game.pendingWinners[0].telegramId, // First winner for backward compatibility
-          game.pendingWinners[0].boardNumber,
-          JSON.stringify(winnersData),
-          winnerCount,
-          prizePerWinner,
-          gameId
-        ]
-      );
-
-      await client.query('COMMIT');
-
-      // Update in-memory
-      game.status = GAME_STATES.COMPLETED;
-      game.winnerId = game.pendingWinners[0].telegramId;
-
-      // Stop number calling
-      this._stopTimers(gameId);
-
-      // Get winner names
-      const winnerDetails = [];
-      for (const winner of game.pendingWinners) {
-        const [user] = await db.select().from(users).where(eq(users.telegramId, winner.telegramId)).limit(1);
-        const winnerName = user ? (user.firstName || user.username || `User ${winner.telegramId}`) : `User ${winner.telegramId}`;
-        winnerDetails.push({
-          telegramId: winner.telegramId,
-          playerName: winnerName,
-          boardNumber: winner.boardNumber,
-          winAmount: prizePerWinner
-        });
-      }
-
-      // Broadcast results
-      if (winnerCount === 1) {
-        // Single winner
-        this._broadcastToGame(gameId, 'game_won', {
-          winnerId: winnerDetails[0].telegramId,
-          winnerName: winnerDetails[0].playerName,
-          boardNumber: winnerDetails[0].boardNumber,
-          winAmount: prizePerWinner,
-          pattern: 'any',
-          winningLine: null,
-        });
-      } else {
-        // Multiple winners
-        this._broadcastToGame(gameId, 'multiple_winners', {
-          winners: winnerDetails,
-          totalWinners: winnerCount,
-          prizePerWinner,
-          pattern: 'any'
-        });
-      }
-
-      logger.info(`Game ${gameId} completed with ${winnerCount} winner(s) — ${prizePerWinner} Birr each`);
-
-      // Cleanup after delay
-      setTimeout(() => {
-        this._cleanupGame(gameId);
-      }, 30000);
-
-    } catch (error) {
-      await client.query('ROLLBACK');
-      logger.error('Error closing winner window:', error);
-    } finally {
-      client.release();
-    }
-  }
-
-  /**
    * Handle BINGO claim — server validates everything
    */
   async claimBingo(socketId, telegramId, gameId) {
@@ -762,7 +524,7 @@ class BingoEngine {
 
         await client.query('COMMIT');
 
-        logger.info(`First winner claim in game ${gameId} by ${telegramId} - starting ${game.winnerTimeWindowMs}ms window`);
+        logger.debug(`First winner claim in game ${gameId} - starting ${game.winnerTimeWindowMs}ms window`);
 
         // Schedule window closure
         setTimeout(() => {
@@ -788,7 +550,7 @@ class BingoEngine {
 
           await client.query('COMMIT');
 
-          logger.info(`Additional winner in game ${gameId} by ${telegramId} (${timeSinceFirst}ms after first)`);
+          logger.debug(`Additional winner in game ${gameId} (${timeSinceFirst}ms after first)`);
 
           return {
             success: true,
@@ -896,7 +658,7 @@ class BingoEngine {
       reason: 'repeated_false_claims'
     });
 
-    logger.info(`Player ${telegramId} removed from game ${gameId} for false claims. ${game.playerCount} players remaining.`);
+    logger.debug(`Player removed from game ${gameId} for false claims. ${game.playerCount} players remaining.`);
 
     // Check remaining players
     if (game.playerCount === 0 && game.status === GAME_STATES.PLAYING) {
@@ -974,7 +736,7 @@ class BingoEngine {
         message: 'Winner by default - last player remaining!'
       });
 
-      logger.info(`Game ${gameId} WON by ${telegramId} (last player standing) — ${winAmount} Birr`);
+      logger.debug(`Game ${gameId} WON (last player standing) — ${winAmount} Birr`);
 
       // Cleanup after delay
       setTimeout(() => {
