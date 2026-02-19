@@ -1,0 +1,109 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 222 25% 6%;
+    --foreground: 210 20% 92%;
+
+    --card: 220 20% 10%;
+    --card-foreground: 210 20% 92%;
+
+    --popover: 220 22% 12%;
+    --popover-foreground: 210 20% 92%;
+
+    --primary: 43 96% 56%;
+    --primary-foreground: 222 25% 6%;
+
+    --secondary: 220 18% 16%;
+    --secondary-foreground: 210 20% 85%;
+
+    --muted: 220 16% 14%;
+    --muted-foreground: 215 14% 50%;
+
+    --accent: 195 85% 50%;
+    --accent-foreground: 222 25% 6%;
+
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 220 16% 18%;
+    --input: 220 16% 18%;
+    --ring: 43 96% 56%;
+
+    --radius: 0.625rem;
+
+    /* Status colors */
+    --status-pending: 45 93% 47%;
+    --status-review: 217 91% 60%;
+    --status-approved: 142 71% 45%;
+    --status-rejected: 0 72% 51%;
+
+    /* Severity */
+    --risk-high: 0 72% 51%;
+    --risk-medium: 38 92% 50%;
+    --risk-low: 142 71% 45%;
+
+    /* Sidebar */
+    --sidebar-background: 222 28% 5%;
+    --sidebar-foreground: 215 14% 60%;
+    --sidebar-primary: 43 96% 56%;
+    --sidebar-primary-foreground: 222 25% 6%;
+    --sidebar-accent: 220 18% 12%;
+    --sidebar-accent-foreground: 210 20% 92%;
+    --sidebar-border: 220 16% 14%;
+    --sidebar-ring: 43 96% 56%;
+
+    /* Chart */
+    --chart-1: 43 96% 56%;
+    --chart-2: 195 85% 50%;
+    --chart-3: 142 71% 45%;
+    --chart-4: 0 72% 51%;
+    --chart-5: 262 83% 58%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    font-family: 'Inter', system-ui, sans-serif;
+  }
+
+  .font-mono {
+    font-family: 'JetBrains Mono', monospace;
+  }
+}
+
+@layer utilities {
+  .status-pending {
+    @apply bg-[hsl(var(--status-pending)/0.15)] text-[hsl(var(--status-pending))] border-[hsl(var(--status-pending)/0.3)];
+  }
+  .status-review {
+    @apply bg-[hsl(var(--status-review)/0.15)] text-[hsl(var(--status-review))] border-[hsl(var(--status-review)/0.3)];
+  }
+  .status-approved {
+    @apply bg-[hsl(var(--status-approved)/0.15)] text-[hsl(var(--status-approved))] border-[hsl(var(--status-approved)/0.3)];
+  }
+  .status-rejected {
+    @apply bg-[hsl(var(--status-rejected)/0.15)] text-[hsl(var(--status-rejected))] border-[hsl(var(--status-rejected)/0.3)];
+  }
+
+  .glass-card {
+    @apply bg-card/80 backdrop-blur-sm border border-border/50 rounded-lg;
+  }
+
+  .glow-primary {
+    box-shadow: 0 0 20px hsl(43 96% 56% / 0.15);
+  }
+
+  .kpi-card {
+    @apply glass-card p-5 hover:border-primary/30 transition-colors duration-200;
+  }
+}
