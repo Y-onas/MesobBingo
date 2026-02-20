@@ -258,6 +258,15 @@ router.put('/:roomId/win-rules/:ruleId', async (req, res) => {
       return res.status(400).json({ error: 'Invalid values' });
     }
 
+    // Check if rule exists first
+    const [existingRule] = await db.select()
+      .from(winPercentageRules)
+      .where(eq(winPercentageRules.id, parseInt(ruleId)));
+
+    if (!existingRule) {
+      return res.status(404).json({ error: 'Rule not found' });
+    }
+
     // Get existing rules excluding this one
     const existingRules = await db.select()
       .from(winPercentageRules)
@@ -274,7 +283,7 @@ router.put('/:roomId/win-rules/:ruleId', async (req, res) => {
       { min_players: minP, max_players: maxP }
     ];
 
-    await validateRules(parseInt(roomId), allRules, parseInt(ruleId));
+    await validateRules(parseInt(roomId), allRules);
 
     // Update rule
     const [rule] = await db.update(winPercentageRules)
@@ -286,10 +295,6 @@ router.put('/:roomId/win-rules/:ruleId', async (req, res) => {
       })
       .where(eq(winPercentageRules.id, parseInt(ruleId)))
       .returning();
-
-    if (!rule) {
-      return res.status(404).json({ error: 'Rule not found' });
-    }
 
     // Log audit
     await db.insert(auditLogs).values({
@@ -378,14 +383,19 @@ router.patch('/:roomId/toggle-dynamic-percentage', async (req, res) => {
       return res.status(400).json({ error: 'use_dynamic_percentage must be a boolean' });
     }
 
+    // Check if room exists first
+    const [existingRoom] = await db.select()
+      .from(gameRooms)
+      .where(eq(gameRooms.id, parseInt(roomId)));
+
+    if (!existingRoom) {
+      return res.status(404).json({ error: 'Room not found' });
+    }
+
     const [room] = await db.update(gameRooms)
       .set({ useDynamicPercentage: use_dynamic_percentage })
       .where(eq(gameRooms.id, parseInt(roomId)))
       .returning();
-
-    if (!room) {
-      return res.status(404).json({ error: 'Room not found' });
-    }
 
     // Log audit
     await db.insert(auditLogs).values({

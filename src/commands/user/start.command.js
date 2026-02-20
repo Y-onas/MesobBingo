@@ -67,6 +67,8 @@ To start playing and receive your *5 ብር welcome bonus*, please share your co
 🏦 Main Wallet: ${Number(user.mainWallet).toFixed(2)} ብር
 🎁 Play Wallet: ${Number(user.playWallet).toFixed(2)} ብር
 
+💡 *Tip:* Use /invite to earn bonus by referring friends!
+
 ለመጫወት ከታች ያለውን ምናሌ ይጠቀሙ:`;
 
     await ctx.reply(welcomeMessage, {

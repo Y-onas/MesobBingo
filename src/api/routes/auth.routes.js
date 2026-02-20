@@ -1,12 +1,26 @@
 const { Router } = require('express');
+const rateLimit = require('express-rate-limit');
 const jwt = require('jsonwebtoken');
 const { ADMIN_IDS, JWT_SECRET, JWT_EXPIRES_IN } = require('../../config/env');
 const logger = require('../../utils/logger');
 
 const router = Router();
 
+// Rate limiter for login endpoint - prevents brute force and admin ID enumeration
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 5, // Limit each IP to 5 login attempts per windowMs
+  message: { error: 'Too many login attempts, please try again later' },
+  standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
+  legacyHeaders: false, // Disable the `X-RateLimit-*` headers
+  handler: (req, res) => {
+    logger.warn(`Rate limit exceeded for IP: ${req.ip}`);
+    res.status(429).json({ error: 'Too many login attempts, please try again later' });
+  },
+});
+
 // POST /api/auth/login — verify admin and issue JWT token
-router.post('/login', async (req, res) => {
+router.post('/login', loginLimiter, async (req, res) => {
   try {
     const { telegramId } = req.body;
     

@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
-import { Eye, Lock, CheckCircle2, XCircle, Image, Loader2 } from "lucide-react";
+import { Eye, Lock, CheckCircle2, XCircle, Image, Loader2, AlertTriangle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 const ADMIN_ID = () => localStorage.getItem("mesob_admin_id") || "admin-001";

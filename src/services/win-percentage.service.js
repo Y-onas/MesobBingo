@@ -60,9 +60,10 @@ const recalculateRoomFinancials = async (roomId) => {
   const expectedPayout = totalPot * (winPercentage / 100);
   const commission = totalPot - expectedPayout;
 
+  // Only update financial calculations, preserve the static winningPercentage field
+  // The static percentage is used as fallback when dynamic percentage is disabled
   await db.update(gameRooms)
     .set({
-      winningPercentage: winPercentage,
       expectedPayout: String(expectedPayout.toFixed(2)),
       commission: String(commission.toFixed(2)),
     })
@@ -77,10 +78,9 @@ const recalculateRoomFinancials = async (roomId) => {
  * Validate rules for a room
  * @param {number} roomId - The room ID
  * @param {Array} rules - Array of rule objects with min_players, max_players
- * @param {number|null} excludeRuleId - Rule ID to exclude from validation
  * @returns {Promise<boolean>} True if valid
  */
-const validateRules = async (roomId, rules, excludeRuleId = null) => {
+const validateRules = async (roomId, rules) => {
   const [room] = await db.select().from(gameRooms).where(eq(gameRooms.id, roomId));
   
   if (!room) {

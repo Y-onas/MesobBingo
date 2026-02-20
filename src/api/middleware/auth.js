@@ -47,11 +47,13 @@ const apiKeyAuthMiddleware = (req, res, next) => {
   
   // Attach admin info from header
   const rawAdminId = req.headers['x-admin-id'];
-  req.adminId = rawAdminId || 'admin-001';
-  req.adminName = req.headers['x-admin-name'] || 'Unknown Admin';
+  // For legacy path, use a fixed identifier to prevent audit log spoofing
+  // If specific admin tracking is needed, migrate to JWT authentication
+  req.adminId = 'legacy-api-key-user';
+  req.adminName = 'Legacy API User';
   req.adminIp = req.ip || req.connection?.remoteAddress || '0.0.0.0';
   
-  logger.warn(`Legacy API key auth used by ${req.adminId} - please migrate to JWT`);
+  logger.warn(`Legacy API key auth used - please migrate to JWT`);
   next();
 };
 
