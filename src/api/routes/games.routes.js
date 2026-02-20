@@ -157,6 +157,15 @@ router.get('/:roomId/win-rules', async (req, res) => {
   try {
     const { roomId } = req.params;
     
+    // Check if room exists
+    const [room] = await db.select()
+      .from(gameRooms)
+      .where(eq(gameRooms.id, parseInt(roomId)));
+    
+    if (!room) {
+      return res.status(404).json({ error: 'Room not found' });
+    }
+    
     const rules = await db.select()
       .from(winPercentageRules)
       .where(eq(winPercentageRules.roomId, parseInt(roomId)))
@@ -182,6 +191,15 @@ router.post('/:roomId/win-rules', async (req, res) => {
   try {
     const { roomId } = req.params;
     const { min_players, max_players, win_percentage, skip_validation } = req.body;
+
+    // Check if room exists first
+    const [room] = await db.select()
+      .from(gameRooms)
+      .where(eq(gameRooms.id, parseInt(roomId)));
+    
+    if (!room) {
+      return res.status(404).json({ error: 'Room not found' });
+    }
 
     // Validation
     if (!min_players || !max_players || !win_percentage) {
@@ -269,6 +287,11 @@ router.put('/:roomId/win-rules/:ruleId', async (req, res) => {
       return res.status(404).json({ error: 'Rule not found' });
     }
 
+    // Verify rule belongs to the specified room
+    if (existingRule.roomId !== parseInt(roomId)) {
+      return res.status(403).json({ error: 'Rule does not belong to this room' });
+    }
+
     // Get existing rules excluding this one
     const existingRules = await db.select()
       .from(winPercentageRules)
@@ -337,6 +360,11 @@ router.delete('/:roomId/win-rules/:ruleId', async (req, res) => {
 
     if (!existing) {
       return res.status(404).json({ error: 'Rule not found' });
+    }
+
+    // Verify rule belongs to the specified room
+    if (existing.roomId !== parseInt(roomId)) {
+      return res.status(403).json({ error: 'Rule does not belong to this room' });
     }
 
     // Get remaining rules after deletion

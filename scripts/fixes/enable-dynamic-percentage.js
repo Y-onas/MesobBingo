@@ -1,6 +1,11 @@
 require('dotenv').config();
 const { neon } = require('@neondatabase/serverless');
 
+if (!process.env.DATABASE_URL) {
+  console.error('❌ DATABASE_URL environment variable is not set');
+  process.exit(1);
+}
+
 const sql = neon(process.env.DATABASE_URL);
 
 async function enableDynamicPercentage() {
@@ -12,18 +17,26 @@ async function enableDynamicPercentage() {
     process.exit(1);
   }
   
+  // Strict validation: ensure ID is a valid integer
+  const id = parseInt(roomId, 10);
+  
+  if (!Number.isInteger(id) || id <= 0 || roomId !== String(id)) {
+    console.error(`❌ Invalid roomId: "${roomId}" - must be a positive integer`);
+    process.exit(1);
+  }
+  
   try {
-    console.log(`Enabling dynamic percentage for room ${roomId}...\n`);
+    console.log(`Enabling dynamic percentage for room ${id}...\n`);
     
     // Check if room exists
     const [room] = await sql`
       SELECT id, name, use_dynamic_percentage 
       FROM game_rooms 
-      WHERE id = ${parseInt(roomId)}
+      WHERE id = ${id}
     `;
     
     if (!room) {
-      console.error(`❌ Room ${roomId} not found`);
+      console.error(`❌ Room ${id} not found`);
       process.exit(1);
     }
     
@@ -39,7 +52,7 @@ async function enableDynamicPercentage() {
     await sql`
       UPDATE game_rooms 
       SET use_dynamic_percentage = true 
-      WHERE id = ${parseInt(roomId)}
+      WHERE id = ${id}
     `;
     
     console.log('\n✅ Dynamic percentage enabled!');

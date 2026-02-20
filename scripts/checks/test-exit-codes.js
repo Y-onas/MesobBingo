@@ -31,6 +31,10 @@ function runScript(scriptName) {
       output += data.toString();
     });
 
+    child.on('error', (err) => {
+      resolve({ scriptName, exitCode: 1, output: `Spawn error: ${err.message}` });
+    });
+
     child.on('close', (code) => {
       resolve({ scriptName, exitCode: code, output });
     });

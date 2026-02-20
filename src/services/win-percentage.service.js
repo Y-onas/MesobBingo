@@ -94,7 +94,8 @@ const recalculateRoomFinancials = async (roomId) => {
  * Validate rules for a room
  * @param {number} roomId - The room ID
  * @param {Array} rules - Array of rule objects with min_players, max_players
- * @param {boolean} requireComplete - Require complete coverage (default: true)
+ * @param {boolean} requireComplete - Require complete coverage for non-empty rules (default: true)
+ *                                     Note: Empty rules are always allowed (uses smart fallback)
  * @returns {Promise<boolean>} True if valid
  */
 const validateRules = async (roomId, rules, requireComplete = true) => {
@@ -105,11 +106,8 @@ const validateRules = async (roomId, rules, requireComplete = true) => {
   }
 
   // Allow empty rules (will use smart fallback with ±5% adjustment)
+  // Empty rules are always allowed regardless of requireComplete setting
   if (rules.length === 0) {
-    if (!requireComplete) {
-      return true;
-    }
-    // Empty rules are allowed - will use smart fallback
     logger.info(`No rules for room ${roomId}, will use smart fallback (±5% based on player count)`);
     return true;
   }

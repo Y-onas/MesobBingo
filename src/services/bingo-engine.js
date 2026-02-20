@@ -343,7 +343,20 @@ class BingoEngine {
     try {
       const dynamicWinPercentage = await getWinPercentage(game.roomId, game.playerCount);
       game.winningPercentage = dynamicWinPercentage;
-      logger.info(`Game ${gameId} using dynamic win percentage: ${dynamicWinPercentage}% (${game.playerCount} players)`);
+      
+      // Recalculate commission with the new dynamic percentage
+      const commission = game.prizePool * ((100 - game.winningPercentage) / 100);
+      const expectedPayout = game.prizePool - commission;
+      
+      // Update database with new commission
+      await db.update(games)
+        .set({ 
+          commission: commission.toString(),
+          expectedPayout: expectedPayout.toString()
+        })
+        .where(eq(games.id, gameId));
+      
+      logger.info(`Game ${gameId} using dynamic win percentage: ${dynamicWinPercentage}% (${game.playerCount} players), commission: ${commission.toFixed(2)}`);
     } catch (error) {
       logger.error(`Error calculating dynamic win percentage for game ${gameId}:`, error);
       // Keep the static percentage if calculation fails

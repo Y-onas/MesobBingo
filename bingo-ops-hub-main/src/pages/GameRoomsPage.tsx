@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { fetchGameRooms, createGameRoom, updateGameRoom, deleteGameRoom, fetchWinRules, createWinRule, updateWinRule, deleteWinRule, toggleDynamicPercentage } from "@/lib/api";
 import { StatusBadge } from "@/components/StatusBadge";
@@ -90,9 +90,11 @@ export default function GameRoomsPage() {
   });
 
   // Update roomWinRules when allWinRules changes
-  if (allWinRules && JSON.stringify(allWinRules) !== JSON.stringify(roomWinRules)) {
-    setRoomWinRules(allWinRules);
-  }
+  useEffect(() => {
+    if (allWinRules) {
+      setRoomWinRules(allWinRules);
+    }
+  }, [allWinRules]);
 
 
 
