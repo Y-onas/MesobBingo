@@ -688,9 +688,12 @@ class BingoEngine {
       [gameId, telegramId]
     );
 
-    // Get player name
-    const [player] = await db.select().from(users).where(eq(users.telegramId, telegramId)).limit(1);
-    const playerName = player ? (player.firstName || player.username || `User ${telegramId}`) : `User ${telegramId}`;
+    // Get player name (using transaction client for consistency)
+    const { rows: [player] } = await client.query(
+      'SELECT first_name, username FROM users WHERE telegram_id = $1 LIMIT 1',
+      [telegramId]
+    );
+    const playerName = player ? (player.first_name || player.username || `User ${telegramId}`) : `User ${telegramId}`;
 
     // Redirect removed player to lobby
     this._emitToPlayer(telegramId, 'force_leave_game', {
@@ -774,9 +777,12 @@ class BingoEngine {
       // Stop number calling
       this._stopTimers(gameId);
 
-      // Get winner display name
-      const [winner] = await db.select().from(users).where(eq(users.telegramId, telegramId)).limit(1);
-      const winnerName = winner ? (winner.firstName || winner.username || `User ${telegramId}`) : `User ${telegramId}`;
+      // Get winner display name (using transaction client)
+      const { rows: [winner] } = await client.query(
+        'SELECT first_name, username FROM users WHERE telegram_id = $1 LIMIT 1',
+        [telegramId]
+      );
+      const winnerName = winner ? (winner.first_name || winner.username || `User ${telegramId}`) : `User ${telegramId}`;
 
       // Broadcast winner to all players
       this._broadcastToGame(gameId, 'game_won', {
