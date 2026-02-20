@@ -4,7 +4,7 @@ Utility scripts for database management, testing, and maintenance.
 
 ## Directory Structure
 
-```
+```text
 scripts/
 ├── migrations/     # Database migration scripts
 ├── checks/         # Verification and testing scripts
@@ -49,6 +49,11 @@ Located in `scripts/checks/`
 
 ### test-system.js
 Comprehensive system test for all components (Bot API, Admin Dashboard, Web Game).
+
+**Environment Variables Required:**
+- `ADMIN_API_KEY` - Admin API key for authentication
+- `ADMIN_ID` or `ADMIN_IDS` - Admin Telegram ID(s)
+- `API_BASE` (optional) - API base URL (default: http://localhost:3001)
 
 ```bash
 node scripts/checks/test-system.js
@@ -113,15 +118,33 @@ Located in `scripts/fixes/`
 
 These are one-time fix scripts for specific issues. Run only when needed.
 
+⚠️ **WARNING**: Fix scripts can modify or delete data. Use with caution!
+
 ### fix-game-schema.js
-Fixes game schema inconsistencies.
+Fixes game schema inconsistencies by dropping and recreating tables.
+
+**⚠️ DANGER**: This script drops all game tables and data!
+
+**Safety Features:**
+- Blocks execution in production without explicit confirmation
+- Requires `CONFIRM_GAME_SCHEMA_RESET=true` in production
+- Shows warnings before execution
 
 ```bash
+# Development (with warning)
 node scripts/fixes/fix-game-schema.js
+
+# Production (requires confirmation)
+NODE_ENV=production CONFIRM_GAME_SCHEMA_RESET=true node scripts/fixes/fix-game-schema.js
 ```
 
 ### fix-withdrawal-status.js
-Fixes withdrawal status issues.
+Fixes withdrawal status issues (changes 'completed' to 'approved').
+
+**Safety Features:**
+- Shows warning in production
+- Only updates status values (non-destructive)
+- Shows count before updating
 
 ```bash
 node scripts/fixes/fix-withdrawal-status.js

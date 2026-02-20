@@ -25,6 +25,43 @@ export default function GameRoomsPage() {
     { min_players: "51", max_players: "100", win_percentage: "60" }
   ]);
 
+  // Store win rules for each room
+  const [roomWinRules, setRoomWinRules] = useState<Record<number, any[]>>({});
+
+  // Helper function to calculate dynamic win percentage
+  const calculateDynamicWinPercentage = (room: any): string => {
+    // If dynamic percentage is disabled, return static percentage
+    if (!room.use_dynamic_percentage) {
+      return `${room.winning_percentage}%`;
+    }
+
+    const currentPlayers = room.current_players || 0;
+    const rules = roomWinRules[room.id] || [];
+
+    // Find matching rule
+    const matchingRule = rules.find(
+      (rule: any) => currentPlayers >= rule.min_players && currentPlayers <= rule.max_players
+    );
+
+    if (matchingRule) {
+      return `${matchingRule.win_percentage}%`;
+    }
+
+    // Smart fallback: adjust static percentage based on player count
+    const basePercentage = room.winning_percentage;
+    const midPoint = room.max_players / 2;
+    
+    if (currentPlayers < midPoint) {
+      // Fewer players - increase win percentage
+      const adjusted = Math.min(basePercentage + 5, 100);
+      return `${adjusted}%`;
+    } else {
+      // More players - decrease win percentage
+      const adjusted = Math.max(basePercentage - 5, 1);
+      return `${adjusted}%`;
+    }
+  };
+
 
 
   const { data: rooms = [], isLoading, isError, error } = useQuery({
@@ -32,6 +69,30 @@ export default function GameRoomsPage() {
     queryFn: fetchGameRooms,
     refetchInterval: 15000,
   });
+
+  // Fetch win rules for all rooms when rooms data changes
+  const { data: allWinRules } = useQuery({
+    queryKey: ["all-win-rules", rooms.map((r: any) => r.id).join(',')],
+    queryFn: async () => {
+      const rulesMap: Record<number, any[]> = {};
+      for (const room of rooms) {
+        try {
+          const rules = await fetchWinRules(room.id);
+          rulesMap[room.id] = rules;
+        } catch (error) {
+          // If error fetching rules, use empty array
+          rulesMap[room.id] = [];
+        }
+      }
+      return rulesMap;
+    },
+    enabled: rooms.length > 0,
+  });
+
+  // Update roomWinRules when allWinRules changes
+  if (allWinRules && JSON.stringify(allWinRules) !== JSON.stringify(roomWinRules)) {
+    setRoomWinRules(allWinRules);
+  }
 
 
 
@@ -360,7 +421,7 @@ export default function GameRoomsPage() {
               </div>
               <div className="flex items-center justify-between text-xs text-muted-foreground">
                 <span>Countdown: {room.countdown_time}s</span>
-                <span>Win: {room.winning_percentage}%</span>
+                <span>Win: {calculateDynamicWinPercentage(room)}</span>
               </div>
               <div className="flex gap-2 pt-2">
                 <Button 

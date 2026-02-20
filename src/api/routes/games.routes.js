@@ -21,6 +21,7 @@ router.get('/', async (req, res) => {
       current_players: room.currentPlayers,
       countdown_time: room.countdownTime,
       winning_percentage: room.winningPercentage,
+      use_dynamic_percentage: room.useDynamicPercentage,
       total_pot: Number(room.totalPot),
       expected_payout: Number(room.expectedPayout),
       commission: Number(room.commission),
@@ -207,7 +208,8 @@ router.post('/:roomId/win-rules', async (req, res) => {
         { min_players: minP, max_players: maxP }
       ];
 
-      await validateRules(parseInt(roomId), allRules);
+      // Don't require complete coverage - allow partial rules with smart fallback
+      await validateRules(parseInt(roomId), allRules, false);
     }
 
     // Insert rule
@@ -283,7 +285,8 @@ router.put('/:roomId/win-rules/:ruleId', async (req, res) => {
       { min_players: minP, max_players: maxP }
     ];
 
-    await validateRules(parseInt(roomId), allRules);
+    // Don't require complete coverage - allow partial rules with smart fallback
+    await validateRules(parseInt(roomId), allRules, false);
 
     // Update rule
     const [rule] = await db.update(winPercentageRules)
@@ -346,10 +349,22 @@ router.delete('/:roomId/win-rules/:ruleId', async (req, res) => {
         )
       );
 
-    // Validate remaining rules still provide complete coverage
+    // Validate remaining rules only if there are any
+    // Allow incomplete coverage - will use smart fallback (±5% adjustment)
     if (remainingRules.length > 0) {
       const rules = remainingRules.map(r => ({ min_players: r.minPlayers, max_players: r.maxPlayers }));
-      await validateRules(parseInt(roomId), rules);
+      try {
+        // Don't require complete coverage - allow partial rules with smart fallback
+        await validateRules(parseInt(roomId), rules, false);
+      } catch (validationError) {
+        return res.status(400).json({ 
+          error: 'Cannot delete rule: ' + validationError.message,
+          hint: 'Rules cannot overlap. Adjust other rules first or delete all rules.'
+        });
+      }
+    } else {
+      // Deleting the last rule - room will use smart fallback (±5% adjustment)
+      logger.info(`Deleting last win rule for room ${roomId}, will use smart fallback`);
     }
 
     // Delete rule

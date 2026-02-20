@@ -37,9 +37,25 @@ const getWinPercentage = async (roomId, currentPlayers) => {
     return rule.winPercentage;
   }
 
-  // Fallback to static percentage if no rule found
-  logger.warn(`No dynamic rule found for room ${roomId} with ${currentPlayers} players, using static percentage`);
-  return room.winningPercentage;
+  // Smart fallback: adjust static percentage based on player count
+  // If no rules defined, use dynamic adjustment:
+  // - Below average (< maxPlayers/2): Add 5% (fewer players = higher payout)
+  // - Above average (>= maxPlayers/2): Subtract 5% (more players = lower payout)
+  const basePercentage = room.winningPercentage;
+  const midPoint = room.maxPlayers / 2;
+  
+  let adjustedPercentage;
+  if (currentPlayers < midPoint) {
+    // Fewer players - increase win percentage
+    adjustedPercentage = Math.min(basePercentage + 5, 100);
+    logger.info(`No rules found for room ${roomId}, using adjusted percentage: ${adjustedPercentage}% (${currentPlayers} < ${midPoint} players, +5%)`);
+  } else {
+    // More players - decrease win percentage
+    adjustedPercentage = Math.max(basePercentage - 5, 1);
+    logger.info(`No rules found for room ${roomId}, using adjusted percentage: ${adjustedPercentage}% (${currentPlayers} >= ${midPoint} players, -5%)`);
+  }
+  
+  return adjustedPercentage;
 };
 
 /**
@@ -78,13 +94,24 @@ const recalculateRoomFinancials = async (roomId) => {
  * Validate rules for a room
  * @param {number} roomId - The room ID
  * @param {Array} rules - Array of rule objects with min_players, max_players
+ * @param {boolean} requireComplete - Require complete coverage (default: true)
  * @returns {Promise<boolean>} True if valid
  */
-const validateRules = async (roomId, rules) => {
+const validateRules = async (roomId, rules, requireComplete = true) => {
   const [room] = await db.select().from(gameRooms).where(eq(gameRooms.id, roomId));
   
   if (!room) {
     throw new Error('Room not found');
+  }
+
+  // Allow empty rules (will use smart fallback with ±5% adjustment)
+  if (rules.length === 0) {
+    if (!requireComplete) {
+      return true;
+    }
+    // Empty rules are allowed - will use smart fallback
+    logger.info(`No rules for room ${roomId}, will use smart fallback (±5% based on player count)`);
+    return true;
   }
 
   // Check for overlaps
@@ -98,10 +125,11 @@ const validateRules = async (roomId, rules) => {
     }
   }
 
-  // Check for complete coverage (1 to max_players)
-  const sortedRules = [...rules].sort((a, b) => a.min_players - b.min_players);
-  
-  if (sortedRules.length > 0) {
+  // Only require complete coverage if specified
+  if (requireComplete) {
+    // Check for complete coverage (1 to max_players)
+    const sortedRules = [...rules].sort((a, b) => a.min_players - b.min_players);
+    
     if (sortedRules[0].min_players !== 1) {
       throw new Error('Rules must start from 1 player');
     }

@@ -4,6 +4,34 @@ const { neon } = require('@neondatabase/serverless');
 const sql = neon(process.env.DATABASE_URL);
 
 async function fixGameSchema() {
+  // SAFETY CHECK: Prevent accidental execution in production
+  if (
+    process.env.NODE_ENV === 'production' &&
+    process.env.CONFIRM_GAME_SCHEMA_RESET !== 'true'
+  ) {
+    console.error('❌ SAFETY CHECK FAILED');
+    console.error('');
+    console.error('⚠️  This script will DROP all game tables and data!');
+    console.error('⚠️  Refusing to run in production without explicit confirmation.');
+    console.error('');
+    console.error('To proceed in production, set:');
+    console.error('  CONFIRM_GAME_SCHEMA_RESET=true');
+    console.error('');
+    console.error('⚠️  WARNING: This will permanently delete all game data!');
+    process.exit(1);
+  }
+
+  // Additional warning for all environments
+  console.log('⚠️  WARNING: This script will DROP and recreate game tables!');
+  console.log('⚠️  All game data will be permanently lost!');
+  console.log('');
+  
+  if (process.env.NODE_ENV === 'production') {
+    console.log('🔴 Running in PRODUCTION mode');
+    console.log(`   Confirmation: ${process.env.CONFIRM_GAME_SCHEMA_RESET}`);
+    console.log('');
+  }
+
   try {
     console.log('🔄 Dropping old game tables...');
     

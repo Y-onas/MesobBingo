@@ -4,6 +4,7 @@ require('dotenv').config();
 const sql = neon(process.env.DATABASE_URL);
 
 async function checkTables() {
+  let exitCode = 0;
   try {
     const tables = await sql`
       SELECT table_name 
@@ -19,11 +20,13 @@ async function checkTables() {
       console.log('\n✅ All game tables exist!');
     } else {
       console.log(`\n⚠️  Only ${tables.length}/4 tables exist`);
+      exitCode = 1;
     }
   } catch (error) {
     console.error('Error:', error.message);
+    exitCode = 1;
   }
-  process.exit(0);
+  process.exit(exitCode);
 }
 
 checkTables();

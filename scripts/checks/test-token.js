@@ -1,6 +1,6 @@
 // Simple test script for token generation and verification
 require('dotenv').config();
-const { generateToken, verifyToken } = require('./src/services/auth.service');
+const { generateToken, verifyToken } = require('../../src/services/auth.service');
 
 console.log('Testing token generation and verification...\n');
 

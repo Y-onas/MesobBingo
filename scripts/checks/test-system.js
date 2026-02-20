@@ -3,11 +3,21 @@
  * Tests all components: Telegram Bot, Admin Dashboard, Web Game
  */
 
+require('dotenv').config();
 const fetch = require('node-fetch');
 
-const API_BASE = 'http://localhost:3001';
-const API_KEY = 'mesob-admin-secret';
-const ADMIN_ID = '857631675';
+const API_BASE = process.env.API_BASE || 'http://localhost:3001';
+const API_KEY = process.env.ADMIN_API_KEY;
+// Use ADMIN_ID if set, otherwise use first ID from ADMIN_IDS
+const ADMIN_ID = process.env.ADMIN_ID || (process.env.ADMIN_IDS ? process.env.ADMIN_IDS.split(',')[0].trim() : null);
+
+if (!API_KEY || !ADMIN_ID) {
+  console.error('❌ Missing required environment variables:');
+  if (!API_KEY) console.error('   - ADMIN_API_KEY');
+  if (!ADMIN_ID) console.error('   - ADMIN_ID or ADMIN_IDS');
+  console.error('\n💡 Add these to your .env file or set them as environment variables.');
+  process.exit(1);
+}
 
 console.log('═══════════════════════════════════════════════════');
 console.log('  MESOB BINGO SYSTEM TEST');

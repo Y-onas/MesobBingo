@@ -16,12 +16,19 @@ const pool = new Pool({
 });
 
 async function runMigration() {
+  let exitCode = 0;
   console.log('🔄 Running validation enhancements migration...\n');
 
   const client = await pool.connect();
   try {
     // Read migration file
-    const migrationPath = path.join(__dirname, 'drizzle', '0004_add_multi_winner_support.sql');
+    const migrationPath = path.resolve(
+      __dirname,
+      '..',
+      '..',
+      'drizzle',
+      '0004_add_multi_winner_support.sql'
+    );
     const migrationSQL = fs.readFileSync(migrationPath, 'utf8');
 
     // Execute migration
@@ -39,11 +46,13 @@ async function runMigration() {
 
   } catch (error) {
     console.error('❌ Migration failed:', error);
-    process.exit(1);
+    exitCode = 1;
   } finally {
     client.release();
     await pool.end();
   }
+
+  process.exit(exitCode);
 }
 
 runMigration();

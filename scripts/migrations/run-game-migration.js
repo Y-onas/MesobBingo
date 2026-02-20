@@ -84,11 +84,12 @@ async function runMigration() {
     console.log('  - boards');
     console.log('  - game_players');
     console.log('  - called_numbers');
+    process.exit(0);
   } catch (error) {
     console.error('❌ Migration failed:', error.message);
     console.error('Full error:', error);
+    process.exit(1);
   }
-  process.exit(0);
 }
 
 runMigration();

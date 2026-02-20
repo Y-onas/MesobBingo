@@ -13,6 +13,13 @@ const pool = new Pool({
 });
 
 async function fixWithdrawalStatus() {
+  // SAFETY CHECK: Warn in production
+  if (process.env.NODE_ENV === 'production') {
+    console.log('⚠️  WARNING: Running in PRODUCTION environment');
+    console.log('⚠️  This will update withdrawal status values in the database');
+    console.log('');
+  }
+
   console.log('🔄 Fixing withdrawal status from "completed" to "approved"...\n');
 
   const client = await pool.connect();

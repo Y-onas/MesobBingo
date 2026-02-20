@@ -32,11 +32,12 @@ async function runMigration() {
     await sql`CREATE INDEX IF NOT EXISTS idx_win_rules_range ON win_percentage_rules(room_id, min_players, max_players)`;
     
     console.log('✅ Dynamic win percentage migration successful!');
+    process.exit(0);
   } catch (error) {
     console.error('❌ Migration failed:', error.message);
     console.error(error);
+    process.exit(1);
   }
-  process.exit(0);
 }
 
 runMigration();

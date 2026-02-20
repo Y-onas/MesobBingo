@@ -91,12 +91,14 @@ async function checkTable() {
     } else {
       console.log('❌ Table win_percentage_rules DOES NOT EXIST');
       console.log('\n💡 Run migration to create it:');
-      console.log('   node run-win-percentage-migration.js');
+      console.log('   node scripts/migrations/run-win-percentage-migration.js');
+      process.exit(1);
     }
     
   } catch (error) {
     console.error('❌ Error:', error.message);
     console.error(error);
+    process.exit(1);
   }
   
   process.exit(0);
