@@ -20,8 +20,9 @@ export function useSocket(): UseSocketReturn {
         const serverUrl = getServerUrl();
         let initData = getTelegramInitData();
 
-        // Dev mode: use dev token if not inside Telegram
-        if (!initData && !isTelegramWebApp()) {
+        // Dev mode: use dev token only in development
+        const isDev = import.meta.env.MODE === 'development' || import.meta.env.DEV;
+        if (!initData && !isTelegramWebApp() && isDev) {
             initData = 'dev_123456789';
         }
 

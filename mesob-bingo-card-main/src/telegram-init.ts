@@ -44,8 +44,10 @@ declare global {
   }
 }
 
+const hasWindow = typeof window !== "undefined";
+
 // Initialize Telegram Web App when script loads
-if (window.Telegram?.WebApp) {
+if (hasWindow && window.Telegram?.WebApp) {
   window.Telegram.WebApp.ready();
   window.Telegram.WebApp.expand();
   console.log('Telegram Web App initialized');

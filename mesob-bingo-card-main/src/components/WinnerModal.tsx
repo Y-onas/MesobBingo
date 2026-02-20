@@ -19,6 +19,7 @@ const WinnerModal = ({ isOpen, winnerName, amount, onClose, onPlayAgain }: Winne
         <button 
           onClick={onClose}
           className="absolute top-2 right-2 p-1.5 text-foreground/50 hover:text-foreground transition-colors"
+          aria-label="Close"
         >
           <X className="w-4 h-4" />
         </button>

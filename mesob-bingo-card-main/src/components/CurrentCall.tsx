@@ -35,7 +35,7 @@ const CurrentCall = ({ letter, number, status }: CurrentCallProps) => {
   }, [letter, number, voiceEnabled]);
 
   const toggleVoice = () => {
-    if (voiceEnabled) {
+    if (voiceEnabled && 'speechSynthesis' in window) {
       // Turning off - cancel any ongoing speech
       window.speechSynthesis.cancel();
     }

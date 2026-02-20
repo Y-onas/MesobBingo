@@ -93,7 +93,8 @@
 
   body {
     @apply bg-background text-foreground antialiased;
-    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+
+    font-family: Inter, system-ui, -apple-system, sans-serif;
     background: var(--gradient-primary);
     min-height: 100vh;
   }
@@ -163,6 +164,7 @@
   /* Number grid item */
   .number-cell {
     @apply flex items-center justify-center rounded-lg font-bold text-sm transition-all duration-200;
+
     aspect-ratio: 1;
   }
 
@@ -173,6 +175,7 @@
   /* Active game indicator */
   .live-indicator {
     @apply w-2 h-2 rounded-full bg-success;
+
     animation: pulse-live 1.5s ease-in-out infinite;
   }
 

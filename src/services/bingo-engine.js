@@ -699,7 +699,7 @@ class BingoEngine {
     this._broadcastToGame(gameId, 'player_removed', {
       telegramId,
       playerName,
-      reason: 'repeated_false_claims'
+      reason: 'false_claim'
     });
 
     logger.debug(`Player removed from game ${gameId} for false claims. ${game.playerCount} players remaining.`);

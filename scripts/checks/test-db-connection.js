@@ -4,8 +4,15 @@ require('dotenv').config();
 
 const DATABASE_URL = process.env.DATABASE_URL;
 
+if (!DATABASE_URL) {
+  console.error('DATABASE_URL is required to run the connection checks.');
+  process.exit(1);
+}
+
 async function testConnection() {
   console.log('Testing Neon database connection...\n');
+
+  let failed = false;
 
   // Test 1: Neon HTTP
   console.log('1. Testing Neon HTTP driver...');
@@ -18,6 +25,7 @@ async function testConnection() {
   } catch (error) {
     console.error('❌ Neon HTTP failed:', error.message);
     console.error('   Error details:', error);
+    failed = true;
   }
 
   console.log('\n2. Testing pg Pool...');
@@ -25,7 +33,7 @@ async function testConnection() {
     connectionString: DATABASE_URL,
     max: 5,
     connectionTimeoutMillis: 10000,
-    ssl: { rejectUnauthorized: false }
+    ssl: { rejectUnauthorized: process.env.NODE_ENV === 'development' ? false : true }
   });
 
   try {
@@ -38,6 +46,7 @@ async function testConnection() {
   } catch (error) {
     console.error('❌ pg Pool failed:', error.message);
     console.error('   Error code:', error.code);
+    failed = true;
   } finally {
     await pool.end();
   }
@@ -53,10 +62,11 @@ async function testConnection() {
     console.log('   Users count:', users[0].count);
   } catch (error) {
     console.error('❌ Table access failed:', error.message);
+    failed = true;
   }
 
   console.log('\nConnection test complete.');
-  process.exit(0);
+  process.exit(failed ? 1 : 0);
 }
 
 testConnection().catch(err => {

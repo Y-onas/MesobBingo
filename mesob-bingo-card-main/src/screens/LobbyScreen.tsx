@@ -49,7 +49,7 @@ const LobbyScreen = ({ rooms, balance, onSelectGame, onRefreshBalance, connectio
             players={room.currentPlayers}
             maxPlayers={room.maxPlayers}
             derash={room.totalPot}
-            startsIn={room.startsIn ? formatCountdown(room.startsIn) : undefined}
+            startsIn={room.startsIn !== null && room.startsIn !== undefined ? formatCountdown(room.startsIn) : undefined}
             onPlay={() => onSelectGame(room.id)}
           />
         ))}

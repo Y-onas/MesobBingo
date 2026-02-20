@@ -20,7 +20,7 @@ const pool = new Pool({
   max: 20,
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 5000,
-  ssl: DATABASE_URL.includes('sslmode=') ? undefined : { 
+  ssl: { 
     rejectUnauthorized: process.env.NODE_ENV === 'development' ? false : true 
   },
 });

@@ -85,9 +85,11 @@ const BoardSelectionScreen = ({
           end={showRange === '1-100' ? 100 : 200}
           calledNumbers={[]}
           selectedNumbers={selectedBoard ? [selectedBoard] : []}
-          unavailableNumbers={availableBoards.length > 0 ? 
-            Array.from({length: showRange === '1-100' ? 100 : 100}, (_, i) => (showRange === '1-100' ? 1 : 101) + i)
-              .filter(n => !availableBoards.includes(n)) : []
+          unavailableNumbers={
+            availableBoards.length === 0
+              ? Array.from({ length: 100 }, (_, i) => (showRange === '1-100' ? 1 : 101) + i)
+              : Array.from({ length: 100 }, (_, i) => (showRange === '1-100' ? 1 : 101) + i)
+                  .filter(n => !availableBoards.includes(n))
           }
           onNumberClick={handleSelectBoard}
         />
