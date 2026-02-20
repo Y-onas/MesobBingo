@@ -180,7 +180,7 @@ class BingoEngine {
       maxPlayers: room.maxPlayers,
       countdownTime: room.countdownTime,
       winningPercentage: room.winningPercentage,
-      winnerTimeWindowMs: room.winnerTimeWindowMs || 100, // Time window for multiple winners (100ms)
+      winnerTimeWindowMs: room.winnerTimeWindowMs ?? 100, // Time window for multiple winners (100ms)
       status: GAME_STATES.LOBBY,
       players: new Set(),       // Set<telegramId>
       playerBoards: new Map(),  // telegramId → boardNumber
@@ -504,6 +504,9 @@ class BingoEngine {
       if (!Array.isArray(markedNumbers)) {
         return { success: false, error: 'Invalid marked numbers format' };
       }
+      if (markedNumbers.length > 75) {
+        return { success: false, error: 'Too many marked numbers' };
+      }
       if (!markedNumbers.every(n => typeof n === 'number' && n >= 1 && n <= 75)) {
         return { success: false, error: 'Invalid marked numbers values' };
       }
@@ -694,6 +697,12 @@ class BingoEngine {
       reason: 'removed_for_false_claims',
       message: 'You have been removed from the game for an invalid BINGO claim. Entry fee is not refunded.'
     });
+
+    // Ensure server-side removal from the game room
+    const sockets = this.connectionManager.getSocketsByUser(telegramId);
+    if (sockets && sockets.size > 0) {
+      sockets.forEach(socketId => this.connectionManager.leaveGame(socketId));
+    }
 
     // Notify all OTHER players
     this._broadcastToGame(gameId, 'player_removed', {

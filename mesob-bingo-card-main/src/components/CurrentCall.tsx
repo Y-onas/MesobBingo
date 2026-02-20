@@ -32,6 +32,12 @@ const CurrentCall = ({ letter, number, status }: CurrentCallProps) => {
       
       window.speechSynthesis.speak(utterance);
     }
+
+    return () => {
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+      }
+    };
   }, [letter, number, voiceEnabled]);
 
   const toggleVoice = () => {

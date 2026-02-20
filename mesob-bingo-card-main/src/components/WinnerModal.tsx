@@ -14,9 +14,15 @@ const WinnerModal = ({ isOpen, winnerName, amount, onClose, onPlayAgain }: Winne
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-black/60 backdrop-blur-sm animate-fade-in">
-      <div className="relative w-full max-w-xs glass-card p-4 celebrate">
+      <div 
+        className="relative w-full max-w-xs glass-card p-4 celebrate"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="winner-modal-title"
+      >
         {/* Close button */}
         <button 
+          type="button"
           onClick={onClose}
           className="absolute top-2 right-2 p-1.5 text-foreground/50 hover:text-foreground transition-colors"
           aria-label="Close"
@@ -35,7 +41,10 @@ const WinnerModal = ({ isOpen, winnerName, amount, onClose, onPlayAgain }: Winne
 
         {/* Winner Info */}
         <div className="text-center space-y-1 mb-4">
-          <h2 className="text-xl font-bold text-foreground flex items-center justify-center gap-1.5">
+          <h2 
+            id="winner-modal-title"
+            className="text-xl font-bold text-foreground flex items-center justify-center gap-1.5"
+          >
             {winnerName} Won! 🎉
           </h2>
           <div className="flex items-center justify-center gap-1.5">
@@ -47,6 +56,7 @@ const WinnerModal = ({ isOpen, winnerName, amount, onClose, onPlayAgain }: Winne
 
         {/* Play Again Button */}
         <button
+          type="button"
           onClick={onPlayAgain}
           className="w-full py-3 rounded-xl font-bold text-base bg-gradient-success text-success-foreground shadow-lg shadow-success/30 hover:shadow-success/50 transition-all duration-300 hover:scale-[1.02] active:scale-[0.98]"
         >

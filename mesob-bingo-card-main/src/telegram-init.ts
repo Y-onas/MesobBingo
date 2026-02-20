@@ -84,8 +84,11 @@ export function getServerUrl(): string {
 
 /**
  * Hide Telegram menu button (to prevent confusion during gameplay)
+ * Note: This only adjusts padding and doesn't control the native Telegram menu button visibility
  */
 export function hideTelegramMenuButton(): void {
+  if (!hasWindow) return;
+  
   // Telegram doesn't have a direct API to hide the menu button
   // But we can use CSS to hide it via the viewport
   const style = document.createElement('style');
@@ -103,8 +106,11 @@ export function hideTelegramMenuButton(): void {
 
 /**
  * Show Telegram menu button
+ * Note: This only removes padding adjustments and doesn't control the native Telegram menu button visibility
  */
 export function showTelegramMenuButton(): void {
+  if (!hasWindow) return;
+  
   const style = document.getElementById('telegram-menu-hide');
   if (style) {
     style.remove();

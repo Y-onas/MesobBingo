@@ -57,7 +57,7 @@ const LobbyScreen = ({ rooms, balance, onSelectGame, onRefreshBalance, connectio
 
       {/* Footer */}
       <footer className="text-center py-1.5">
-        <p className="text-[10px] text-muted-foreground">© Mesob Bingo 2025</p>
+        <p className="text-[10px] text-muted-foreground">© Mesob Bingo</p>
       </footer>
     </div>
   );
