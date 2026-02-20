@@ -40,6 +40,8 @@ module.exports = {
   // Admin Dashboard API
   API_PORT: parseInt(process.env.API_PORT) || 3001,
   ADMIN_API_KEY: requiredInProduction('ADMIN_API_KEY', 'mesob-admin-secret'),
+  JWT_SECRET: requiredInProduction('JWT_SECRET', 'mesob-jwt-secret-change-in-production'),
+  JWT_EXPIRES_IN: process.env.JWT_EXPIRES_IN || '8h',
   DASHBOARD_URL: process.env.DASHBOARD_URL || 'http://localhost:5173',
   // Web App Configuration
   WEB_APP_URL: process.env.WEB_APP_URL || 'http://localhost:3001/game',

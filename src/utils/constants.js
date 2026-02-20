@@ -54,19 +54,22 @@ const MESSAGES = {
 ━━━━━━━━━━━━━━━━
 💵 Total Balance: {total} ${CURRENCY}`,
 
-  INVITE_MESSAGE: `🤝 *Invite Friends & Earn Recurring Income!*
+  INVITE_MESSAGE: `🤝 *Invite Friends & Earn Bonus!*
 🚀
 
 Share your personal link:
 \`https://t.me/${BOT_USERNAME}?start=ref_{userId}\`
 
 *How it works:*
-🔄 You get ${EMOJI.MONEY} *10 ${CURRENCY} on EVERY deposit* your referral makes!
+💰 Earn bonus on your referral's FIRST deposit:
 
-*Example:*
-• If they deposit 5 times → You earn 50 ${CURRENCY}
-• If they deposit 10 times → You earn 100 ${CURRENCY}
-• No limits! Keep earning forever! 🚀`,
+📊 *Bonus Tiers:*
+• 50-99 ${CURRENCY} → Get 5 ${CURRENCY}
+• 100-199 ${CURRENCY} → Get 10 ${CURRENCY}  
+• 200-499 ${CURRENCY} → Get 20 ${CURRENCY}
+• 500+ ${CURRENCY} → Get 30 ${CURRENCY}
+
+⚠️ Minimum: 50 ${CURRENCY} deposit to qualify`,
 
   HOW_TO_PLAY: `📖 *How To Play*
 

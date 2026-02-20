@@ -76,21 +76,77 @@ const updateBalance = async (telegramId, wallet, amount) => {
 };
 
 /**
- * Process referral bonus on deposit
+ * Calculate referral bonus based on deposit amount (tiered system)
+ * @param {number} depositAmount - The deposit amount
+ * @returns {number} Bonus amount to give referrer
  */
-const processReferralBonus = async (depositorId) => {
+const calculateReferralBonus = (depositAmount) => {
+  const amount = Number(depositAmount);
+  
+  // Tiered bonus structure
+  if (amount >= 500) return 30;
+  if (amount >= 200) return 20;
+  if (amount >= 100) return 10;
+  if (amount >= 50) return 5;
+  
+  // No bonus for deposits below 50 Birr
+  return 0;
+};
+
+/**
+ * Process referral bonus on first deposit only
+ * @param {number} depositorId - The depositor's telegram ID
+ * @param {number} depositAmount - The deposit amount
+ * @param {Object} bot - Telegram bot instance (optional, for notifications)
+ */
+const processReferralBonus = async (depositorId, depositAmount, bot = null) => {
   try {
     const depositor = await getUser(depositorId);
     if (!depositor || !depositor.referredBy) return;
 
+    // Check if this is the first deposit (depositCount should be 1 after approval)
+    if (depositor.depositCount !== 1) {
+      logger.debug(`Skipping referral bonus - not first deposit for ${depositorId}`);
+      return;
+    }
+
+    // Calculate bonus based on deposit amount
+    const bonusAmount = calculateReferralBonus(depositAmount);
+    
+    if (bonusAmount === 0) {
+      logger.debug(`No referral bonus - deposit amount ${depositAmount} below minimum threshold`);
+      return;
+    }
+
     await db.update(users)
       .set({
-        mainWallet: sql`${users.mainWallet} + ${REFERRAL_BONUS}`,
-        referralEarnings: sql`${users.referralEarnings} + ${REFERRAL_BONUS}`,
+        mainWallet: sql`${users.mainWallet} + ${bonusAmount}`,
+        referralEarnings: sql`${users.referralEarnings} + ${bonusAmount}`,
       })
       .where(eq(users.telegramId, depositor.referredBy));
 
-    logger.info(`Referral bonus ${REFERRAL_BONUS} added to ${depositor.referredBy} for ${depositorId}'s deposit`);
+    logger.info(`Referral bonus ${bonusAmount} Birr added to ${depositor.referredBy} for ${depositorId}'s first deposit of ${depositAmount} Birr`);
+
+    // Send notification to referrer if bot instance is available
+    if (bot) {
+      try {
+        const referrer = await getUser(depositor.referredBy);
+        const message = `🎉 *Referral Bonus Earned!*
+
+Your referral just made their first deposit!
+
+💰 You earned: *${bonusAmount} ብር*
+📊 Deposit amount: ${depositAmount} ብር
+
+💳 New balance: ${Number(referrer.mainWallet).toFixed(2)} ብር
+
+Keep inviting friends with /invite to earn more! 🚀`;
+
+        await bot.telegram.sendMessage(depositor.referredBy, message, { parse_mode: 'Markdown' });
+      } catch (notifError) {
+        logger.warn(`Failed to send referral notification to ${depositor.referredBy}:`, notifError.message);
+      }
+    }
   } catch (error) {
     logger.error('Error processing referral bonus:', error);
   }

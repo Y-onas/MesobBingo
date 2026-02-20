@@ -16,19 +16,22 @@ const inviteCommand = async (ctx) => {
     
     const referralLink = `https://t.me/${BOT_USERNAME}?start=ref_${ctx.from.id}`;
     
-    const message = `🤝 *Invite Friends & Earn Recurring Income!*
+    const message = `🤝 *Invite Friends & Earn Bonus!*
 🚀
 
 Share your personal link:
 \`${referralLink}\`
 
 *How it works:*
-🔄 You get ${EMOJI.MONEY} *${REFERRAL_BONUS} ${CURRENCY} on EVERY deposit* your referral makes!
+💰 You earn a bonus when your referral makes their *FIRST deposit*:
 
-*Example:*
-• If they deposit 5 times → You earn 50 ${CURRENCY}
-• If they deposit 10 times → You earn 100 ${CURRENCY}
-• No limits! Keep earning forever! 🚀
+📊 *Bonus Tiers:*
+• 50-99 ${CURRENCY} deposit → You get 5 ${CURRENCY}
+• 100-199 ${CURRENCY} deposit → You get 10 ${CURRENCY}
+• 200-499 ${CURRENCY} deposit → You get 20 ${CURRENCY}
+• 500+ ${CURRENCY} deposit → You get 30 ${CURRENCY}
+
+⚠️ Minimum deposit: 50 ${CURRENCY} to qualify
 
 ━━━━━━━━━━━━━━━━
 📊 *Your Referral Stats:*

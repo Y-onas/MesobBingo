@@ -6,6 +6,7 @@ const { generateBingoBoard, hashBoard, validateBingoWin, getBingoLetter } = requ
 const { GAME_STATES, BINGO_LETTERS } = require('../utils/constants');
 const { NUMBER_CALL_INTERVAL_MS, COUNTDOWN_SECONDS, BOARDS_PER_GAME } = require('../config/env');
 const logger = require('../utils/logger');
+const { getWinPercentage } = require('./win-percentage.service');
 
 /**
  * BingoEngine — Server-authoritative game engine
@@ -334,9 +335,32 @@ class BingoEngine {
   /**
    * Start countdown for a game
    */
-  _startCountdown(gameId) {
+  async _startCountdown(gameId) {
     const game = this.activeGames.get(gameId);
     if (!game || game.status !== GAME_STATES.LOBBY) return;
+
+    // Calculate dynamic win percentage based on current player count
+    try {
+      const dynamicWinPercentage = await getWinPercentage(game.roomId, game.playerCount);
+      game.winningPercentage = dynamicWinPercentage;
+      
+      // Recalculate commission with the new dynamic percentage
+      const commission = game.prizePool * ((100 - game.winningPercentage) / 100);
+      const expectedPayout = game.prizePool - commission;
+      
+      // Update database with new commission
+      await db.update(games)
+        .set({ 
+          commission: commission.toString(),
+          expectedPayout: expectedPayout.toString()
+        })
+        .where(eq(games.id, gameId));
+      
+      logger.info(`Game ${gameId} using dynamic win percentage: ${dynamicWinPercentage}% (${game.playerCount} players), commission: ${commission.toFixed(2)}`);
+    } catch (error) {
+      logger.error(`Error calculating dynamic win percentage for game ${gameId}:`, error);
+      // Keep the static percentage if calculation fails
+    }
 
     game.status = GAME_STATES.COUNTDOWN;
     game.countdownRemaining = game.countdownTime;

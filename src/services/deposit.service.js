@@ -56,8 +56,8 @@ const approveDeposit = async (depositId, adminId) => {
       })
       .where(eq(users.telegramId, updated.telegramId));
 
-    // Process referral bonus
-    await userService.processReferralBonus(updated.telegramId);
+    // Process referral bonus (pass deposit amount for tiered calculation)
+    await userService.processReferralBonus(updated.telegramId, updated.amount);
 
     logger.info(`Deposit approved: ${depositId} by admin ${adminId}`);
     return updated;

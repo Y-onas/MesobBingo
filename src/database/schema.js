@@ -1,6 +1,12 @@
 const { pgTable, bigint, text, numeric, boolean, timestamp, serial, varchar, integer } = require('drizzle-orm/pg-core');
 
-// ─── Users Table ─────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────
+// DATABASE SCHEMA DEFINITIONS
+// All tables have corresponding migration files in drizzle/ directory
+// ─────────────────────────────────────────────────────────────────────
+
+// ─── Users Table ───────────────────────────────────────────────────── 
+// Migration: drizzle/0000_init_schema.sql
 const users = pgTable('users', {
   telegramId: bigint('telegram_id', { mode: 'number' }).primaryKey(),
   username: text('username'),
@@ -25,6 +31,7 @@ const users = pgTable('users', {
 });
 
 // ─── Deposits Table ──────────────────────────────────────────────────
+// Migration: drizzle/0000_init_schema.sql, drizzle/0002_add_sms_text_field.sql
 const deposits = pgTable('deposits', {
   id: serial('id').primaryKey(),
   telegramId: bigint('telegram_id', { mode: 'number' }).notNull(),
@@ -42,6 +49,7 @@ const deposits = pgTable('deposits', {
 });
 
 // ─── Withdrawals Table ───────────────────────────────────────────────
+// Migration: drizzle/0000_init_schema.sql
 const withdrawals = pgTable('withdrawals', {
   id: serial('id').primaryKey(),
   telegramId: bigint('telegram_id', { mode: 'number' }).notNull(),
@@ -57,6 +65,7 @@ const withdrawals = pgTable('withdrawals', {
 });
 
 // ─── Admins Table ────────────────────────────────────────────────────
+// Migration: drizzle/0000_init_schema.sql
 const admins = pgTable('admins', {
   id: serial('id').primaryKey(),
   telegramId: bigint('telegram_id', { mode: 'number' }).unique(),
@@ -68,6 +77,7 @@ const admins = pgTable('admins', {
 });
 
 // ─── Audit Logs Table ────────────────────────────────────────────────
+// Migration: drizzle/0000_init_schema.sql
 const auditLogs = pgTable('audit_logs', {
   id: serial('id').primaryKey(),
   adminId: text('admin_id').notNull(),
@@ -81,6 +91,7 @@ const auditLogs = pgTable('audit_logs', {
 });
 
 // ─── Fraud Alerts Table ──────────────────────────────────────────────
+// Migration: drizzle/0000_init_schema.sql
 const fraudAlerts = pgTable('fraud_alerts', {
   id: serial('id').primaryKey(),
   alertType: varchar('alert_type', { length: 50 }).notNull(),
@@ -94,6 +105,7 @@ const fraudAlerts = pgTable('fraud_alerts', {
 });
 
 // ─── Game Rooms Table ────────────────────────────────────────────────
+// Migration: drizzle/0003_add_game_tables.sql, drizzle/0005_add_dynamic_win_percentage.sql
 const gameRooms = pgTable('game_rooms', {
   id: serial('id').primaryKey(),
   name: text('name').notNull(),
@@ -103,6 +115,7 @@ const gameRooms = pgTable('game_rooms', {
   currentPlayers: integer('current_players').default(0).notNull(),
   countdownTime: integer('countdown_time').default(120).notNull(),
   winningPercentage: integer('winning_percentage').default(75).notNull(),
+  useDynamicPercentage: boolean('use_dynamic_percentage').default(false).notNull(),
   totalPot: numeric('total_pot', { precision: 12, scale: 2 }).default('0').notNull(),
   expectedPayout: numeric('expected_payout', { precision: 12, scale: 2 }).default('0').notNull(),
   commission: numeric('commission', { precision: 12, scale: 2 }).default('0').notNull(),
@@ -112,6 +125,7 @@ const gameRooms = pgTable('game_rooms', {
 });
 
 // ─── Games Table (Individual Game Sessions) ─────────────────────────
+// Migration: drizzle/0003_add_game_tables.sql, drizzle/0004_add_multi_winner_support.sql
 const games = pgTable('games', {
   id: serial('id').primaryKey(),
   roomId: integer('room_id').notNull(),
@@ -132,6 +146,7 @@ const games = pgTable('games', {
 });
 
 // ─── Boards Table (Pre-generated 5x5 Bingo boards per game) ────────
+// Migration: drizzle/0003_add_game_tables.sql
 const boards = pgTable('boards', {
   id: serial('id').primaryKey(),
   gameId: integer('game_id').notNull(),
@@ -144,6 +159,7 @@ const boards = pgTable('boards', {
 });
 
 // ─── Game Players Table ─────────────────────────────────────────────
+// Migration: drizzle/0003_add_game_tables.sql, drizzle/0004_add_multi_winner_support.sql
 const gamePlayers = pgTable('game_players', {
   id: serial('id').primaryKey(),
   gameId: integer('game_id').notNull(),
@@ -156,6 +172,7 @@ const gamePlayers = pgTable('game_players', {
 });
 
 // ─── Called Numbers Table ───────────────────────────────────────────
+// Migration: drizzle/0003_add_game_tables.sql
 const calledNumbers = pgTable('called_numbers', {
   id: serial('id').primaryKey(),
   gameId: integer('game_id').notNull(),
@@ -164,4 +181,17 @@ const calledNumbers = pgTable('called_numbers', {
   calledAt: timestamp('called_at').defaultNow().notNull(),
 });
 
-module.exports = { users, deposits, withdrawals, admins, auditLogs, fraudAlerts, gameRooms, games, boards, gamePlayers, calledNumbers };
+// ─── Win Percentage Rules Table ─────────────────────────────────────
+// Migration: drizzle/0005_add_dynamic_win_percentage.sql
+// Includes: Foreign key to game_rooms, indexes on room_id and range queries
+const winPercentageRules = pgTable('win_percentage_rules', {
+  id: serial('id').primaryKey(),
+  roomId: integer('room_id').notNull(),
+  minPlayers: integer('min_players').notNull(),
+  maxPlayers: integer('max_players').notNull(),
+  winPercentage: integer('win_percentage').notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+module.exports = { users, deposits, withdrawals, admins, auditLogs, fraudAlerts, gameRooms, games, boards, gamePlayers, calledNumbers, winPercentageRules };
