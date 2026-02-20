@@ -73,15 +73,15 @@ export default function UsersPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 md:space-y-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">User Management</h1>
-        <p className="text-sm text-muted-foreground">Search, view profiles, and manage users</p>
+        <h1 className="text-xl md:text-2xl font-bold tracking-tight">User Management</h1>
+        <p className="text-xs md:text-sm text-muted-foreground">Search, view profiles, and manage users</p>
       </div>
 
       {/* Search */}
-      <div className="flex gap-3">
-        <div className="relative flex-1 max-w-md">
+      <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
+        <div className="relative flex-1 max-w-full sm:max-w-md">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             placeholder="Search by Telegram ID, username or phone..."
@@ -91,51 +91,51 @@ export default function UsersPage() {
             onKeyDown={(e) => e.key === "Enter" && refetch()}
           />
         </div>
-        <Button onClick={() => refetch()} variant="outline">Search</Button>
+        <Button onClick={() => refetch()} variant="outline" className="w-full sm:w-auto">Search</Button>
       </div>
 
       {/* Users Table */}
       <div className="glass-card overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+          <table className="w-full text-sm min-w-[800px]">
             <thead>
               <tr className="border-b border-border bg-muted/30">
-                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">User</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">Wallet</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">Total Deposited</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">Games</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">Status</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">Actions</th>
+                <th className="px-3 md:px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">User</th>
+                <th className="px-3 md:px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">Wallet</th>
+                <th className="px-3 md:px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">Total Deposited</th>
+                <th className="px-3 md:px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">Games</th>
+                <th className="px-3 md:px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">Status</th>
+                <th className="px-3 md:px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">Actions</th>
               </tr>
             </thead>
             <tbody>
               {users.map((u: any) => (
                 <tr key={u.telegram_id} className="border-b border-border/50 transition-colors hover:bg-muted/20">
-                  <td className="px-4 py-3">
+                  <td className="px-3 md:px-4 py-3">
                     <button onClick={() => openProfile(u)} className="text-left hover:text-primary transition-colors">
-                      <p className="font-medium">{u.username}</p>
+                      <p className="font-medium text-sm">{u.username}</p>
                       <p className="text-xs text-muted-foreground">ID: {u.telegram_id}</p>
                     </button>
                   </td>
-                  <td className="px-4 py-3 font-mono text-sm">{Number(u.main_wallet).toLocaleString()} ብር</td>
-                  <td className="px-4 py-3 font-mono text-sm">{Number(u.total_deposited).toLocaleString()} ብር</td>
-                  <td className="px-4 py-3 font-mono text-xs">{u.games_played} / {u.games_won}W</td>
-                  <td className="px-4 py-3">
+                  <td className="px-3 md:px-4 py-3 font-mono text-xs md:text-sm whitespace-nowrap">{Number(u.main_wallet).toLocaleString()} ብር</td>
+                  <td className="px-3 md:px-4 py-3 font-mono text-xs md:text-sm whitespace-nowrap">{Number(u.total_deposited).toLocaleString()} ብር</td>
+                  <td className="px-3 md:px-4 py-3 font-mono text-xs whitespace-nowrap">{u.games_played} / {u.games_won}W</td>
+                  <td className="px-3 md:px-4 py-3">
                     <div className="flex items-center gap-2">
-                      {u.is_banned && <span className="inline-flex items-center gap-1 rounded bg-status-rejected/10 px-2 py-0.5 text-xs font-semibold text-status-rejected"><Ban className="h-3 w-3" /> Banned</span>}
-                      {u.phone_verified && <span className="inline-flex items-center gap-1 rounded bg-status-approved/10 px-2 py-0.5 text-xs font-semibold text-status-approved"><ShieldCheck className="h-3 w-3" /> Verified</span>}
+                      {u.is_banned && <span className="inline-flex items-center gap-1 rounded bg-status-rejected/10 px-2 py-0.5 text-xs font-semibold text-status-rejected whitespace-nowrap"><Ban className="h-3 w-3" /> Banned</span>}
+                      {u.phone_verified && <span className="inline-flex items-center gap-1 rounded bg-status-approved/10 px-2 py-0.5 text-xs font-semibold text-status-approved whitespace-nowrap"><ShieldCheck className="h-3 w-3" /> Verified</span>}
                       {!u.is_banned && !u.phone_verified && <span className="text-xs text-muted-foreground">Active</span>}
                     </div>
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-3 md:px-4 py-3">
                     <div className="flex items-center gap-1.5">
-                      <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => openProfile(u)}>
+                      <Button size="sm" variant="outline" className="h-7 text-xs whitespace-nowrap" onClick={() => openProfile(u)}>
                         Profile
                       </Button>
                       <Button
                         size="sm"
                         variant={u.is_banned ? "outline" : "destructive"}
-                        className="h-7 text-xs"
+                        className="h-7 text-xs whitespace-nowrap"
                         onClick={() => banMut.mutate(u.telegram_id)}
                         disabled={banMut.isPending}
                       >
