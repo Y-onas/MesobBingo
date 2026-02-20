@@ -15,7 +15,7 @@ export default function FraudAlertsPage() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
-  const { data: alerts = [], isLoading } = useQuery({
+  const { data: alerts = [], isLoading, isError, error } = useQuery({
     queryKey: ["fraud-alerts"],
     queryFn: fetchFraudAlerts,
     refetchInterval: 20000,
@@ -32,6 +32,32 @@ export default function FraudAlertsPage() {
 
   if (isLoading) {
     return <div className="flex h-64 items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
+  }
+
+  if (isError) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Fraud Alerts</h1>
+          <p className="text-sm text-muted-foreground">Suspicious activity monitoring</p>
+        </div>
+        <div className="glass-card flex flex-col items-center gap-3 p-12">
+          <AlertTriangle className="h-12 w-12 text-status-rejected" />
+          <p className="text-lg font-semibold">Unable to Load Fraud Alerts</p>
+          <p className="text-sm text-muted-foreground">
+            {error instanceof Error ? error.message : "Please try again later."}
+          </p>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => queryClient.invalidateQueries({ queryKey: ["fraud-alerts"] })}
+            className="mt-2"
+          >
+            Retry
+          </Button>
+        </div>
+      </div>
+    );
   }
 
   return (

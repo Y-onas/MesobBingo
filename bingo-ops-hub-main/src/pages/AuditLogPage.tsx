@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { fetchAuditLogs } from "@/lib/api";
 import { Input } from "@/components/ui/input";
-import { Search, ClipboardList, Loader2 } from "lucide-react";
+import { Search, ClipboardList, Loader2, AlertTriangle } from "lucide-react";
 
 const typeColors: Record<string, string> = {
   deposit_approved: "bg-status-approved/10 text-status-approved",
@@ -20,7 +20,7 @@ const typeColors: Record<string, string> = {
 export default function AuditLogPage() {
   const [search, setSearch] = useState("");
 
-  const { data: logs = [], isLoading } = useQuery({
+  const { data: logs = [], isLoading, isError, error } = useQuery({
     queryKey: ["audit-logs", search],
     queryFn: () => fetchAuditLogs(search || undefined),
     refetchInterval: 20000,
@@ -28,6 +28,24 @@ export default function AuditLogPage() {
 
   if (isLoading) {
     return <div className="flex h-64 items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
+  }
+
+  if (isError) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Audit Log</h1>
+          <p className="text-sm text-muted-foreground">Track all admin actions</p>
+        </div>
+        <div className="glass-card flex flex-col items-center gap-3 p-12">
+          <AlertTriangle className="h-12 w-12 text-status-rejected" />
+          <p className="text-lg font-semibold">Unable to Load Audit Logs</p>
+          <p className="text-sm text-muted-foreground">
+            {error instanceof Error ? error.message : "Please try again later."}
+          </p>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -77,7 +95,11 @@ export default function AuditLogPage() {
                       </span>
                     </td>
                     <td className="px-4 py-3 font-mono text-xs">{log.target_user || "—"}</td>
-                    <td className="px-4 py-3 font-mono text-xs">{log.amount ? `${Number(log.amount).toLocaleString()} ብር` : "—"}</td>
+                    <td className="px-4 py-3 font-mono text-xs">
+                      {log.amount !== null && log.amount !== undefined
+                        ? `${Number(log.amount).toLocaleString()} ብር`
+                        : "—"}
+                    </td>
                     <td className="px-4 py-3 text-xs text-muted-foreground">{new Date(log.timestamp).toLocaleString()}</td>
                     <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{log.ip_address || "—"}</td>
                   </tr>

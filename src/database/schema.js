@@ -103,6 +103,7 @@ const gameRooms = pgTable('game_rooms', {
   currentPlayers: integer('current_players').default(0).notNull(),
   countdownTime: integer('countdown_time').default(120).notNull(),
   winningPercentage: integer('winning_percentage').default(75).notNull(),
+  useDynamicPercentage: boolean('use_dynamic_percentage').default(false).notNull(),
   totalPot: numeric('total_pot', { precision: 12, scale: 2 }).default('0').notNull(),
   expectedPayout: numeric('expected_payout', { precision: 12, scale: 2 }).default('0').notNull(),
   commission: numeric('commission', { precision: 12, scale: 2 }).default('0').notNull(),
@@ -164,4 +165,15 @@ const calledNumbers = pgTable('called_numbers', {
   calledAt: timestamp('called_at').defaultNow().notNull(),
 });
 
-module.exports = { users, deposits, withdrawals, admins, auditLogs, fraudAlerts, gameRooms, games, boards, gamePlayers, calledNumbers };
+// ─── Win Percentage Rules Table ─────────────────────────────────────
+const winPercentageRules = pgTable('win_percentage_rules', {
+  id: serial('id').primaryKey(),
+  roomId: integer('room_id').notNull(),
+  minPlayers: integer('min_players').notNull(),
+  maxPlayers: integer('max_players').notNull(),
+  winPercentage: integer('win_percentage').notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+module.exports = { users, deposits, withdrawals, admins, auditLogs, fraudAlerts, gameRooms, games, boards, gamePlayers, calledNumbers, winPercentageRules };

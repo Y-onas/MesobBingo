@@ -11,6 +11,8 @@ export default function LoginPage() {
   const navigate = useNavigate();
   const { toast } = useToast();
 
+  const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -26,20 +28,20 @@ export default function LoginPage() {
     setIsLoading(true);
 
     try {
-      // Verify admin ID with backend
-      const response = await fetch("http://localhost:3001/api/auth/verify-admin", {
+      // Login with backend to get JWT token
+      const response = await fetch(`${API_BASE}/api/auth/login`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "X-API-KEY": "mesob-admin-secret",
         },
         body: JSON.stringify({ telegramId }),
       });
 
       const data = await response.json();
 
-      if (response.ok && data.isAdmin) {
-        // Store admin info in localStorage
+      if (response.ok && data.isAdmin && data.token) {
+        // Store JWT token and admin info in localStorage
+        localStorage.setItem("mesob_admin_token", data.token);
         localStorage.setItem("mesob_admin_id", telegramId);
         localStorage.setItem("mesob_admin_name", data.name || "Admin");
         localStorage.setItem("mesob_admin_authenticated", "true");
@@ -53,7 +55,7 @@ export default function LoginPage() {
       } else {
         toast({
           title: "Access Denied",
-          description: "You are not authorized as an admin",
+          description: data.error || "You are not authorized as an admin",
           variant: "destructive",
         });
       }

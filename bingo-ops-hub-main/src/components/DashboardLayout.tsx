@@ -69,6 +69,7 @@ export default function DashboardLayout() {
               key={to}
               to={to}
               end={to === "/"}
+              aria-label={label}
               className={({ isActive }) =>
                 cn(
                   "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
@@ -79,7 +80,7 @@ export default function DashboardLayout() {
               }
             >
               <Icon className="h-4 w-4 shrink-0" />
-              {!collapsed && <span>{label}</span>}
+              <span className={cn(collapsed && "sr-only")}>{label}</span>
             </NavLink>
           ))}
         </nav>
@@ -109,6 +110,8 @@ export default function DashboardLayout() {
             </div>
           ) : (
             <button
+              type="button"
+              aria-label="Logout"
               onClick={handleLogout}
               className="flex h-8 w-8 items-center justify-center rounded-full hover:bg-muted transition-colors"
               title="Logout"
@@ -120,6 +123,9 @@ export default function DashboardLayout() {
 
         {/* Collapse Toggle */}
         <button
+          type="button"
+          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          aria-expanded={!collapsed}
           onClick={() => setCollapsed(!collapsed)}
           className="flex h-10 items-center justify-center border-t border-border text-muted-foreground transition-colors hover:text-foreground"
         >

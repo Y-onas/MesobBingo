@@ -1,7 +1,9 @@
 const { Router } = require('express');
-const { eq, desc } = require('drizzle-orm');
+const { eq, desc, and, sql } = require('drizzle-orm');
 const { db } = require('../../database');
-const { gameRooms } = require('../../database/schema');
+const { gameRooms, winPercentageRules, auditLogs } = require('../../database/schema');
+const { validateRules } = require('../../services/win-percentage.service');
+const logger = require('../../utils/logger');
 
 const router = Router();
 
@@ -144,6 +146,265 @@ router.delete('/:id', async (req, res) => {
   } catch (error) {
     console.error('Delete room error:', error);
     res.status(500).json({ error: 'Failed to delete room' });
+  }
+});
+
+// ─── Win Percentage Rules Endpoints ──────────────────────────────────
+
+// GET /api/game-rooms/:roomId/win-rules — get all rules for a room
+router.get('/:roomId/win-rules', async (req, res) => {
+  try {
+    const { roomId } = req.params;
+    
+    const rules = await db.select()
+      .from(winPercentageRules)
+      .where(eq(winPercentageRules.roomId, parseInt(roomId)))
+      .orderBy(winPercentageRules.minPlayers);
+
+    res.json(rules.map(r => ({
+      id: r.id,
+      room_id: r.roomId,
+      min_players: r.minPlayers,
+      max_players: r.maxPlayers,
+      win_percentage: r.winPercentage,
+      created_at: r.createdAt,
+      updated_at: r.updatedAt,
+    })));
+  } catch (error) {
+    logger.error('Fetch win rules error:', error);
+    res.status(500).json({ error: 'Failed to fetch win rules' });
+  }
+});
+
+// POST /api/game-rooms/:roomId/win-rules — create a new rule
+router.post('/:roomId/win-rules', async (req, res) => {
+  try {
+    const { roomId } = req.params;
+    const { min_players, max_players, win_percentage, skip_validation } = req.body;
+
+    // Validation
+    if (!min_players || !max_players || !win_percentage) {
+      return res.status(400).json({ error: 'All fields are required' });
+    }
+
+    const minP = parseInt(min_players);
+    const maxP = parseInt(max_players);
+    const winP = parseInt(win_percentage);
+
+    if (minP < 1 || maxP < minP || winP < 1 || winP > 100) {
+      return res.status(400).json({ error: 'Invalid values' });
+    }
+
+    // Get existing rules
+    const existingRules = await db.select()
+      .from(winPercentageRules)
+      .where(eq(winPercentageRules.roomId, parseInt(roomId)));
+
+    // Validate with new rule (skip if requested - used when creating multiple rules)
+    if (!skip_validation) {
+      const allRules = [
+        ...existingRules.map(r => ({ min_players: r.minPlayers, max_players: r.maxPlayers })),
+        { min_players: minP, max_players: maxP }
+      ];
+
+      await validateRules(parseInt(roomId), allRules);
+    }
+
+    // Insert rule
+    const [rule] = await db.insert(winPercentageRules).values({
+      roomId: parseInt(roomId),
+      minPlayers: minP,
+      maxPlayers: maxP,
+      winPercentage: winP,
+    }).returning();
+
+    // Log audit
+    await db.insert(auditLogs).values({
+      adminId: req.adminId || 'system',
+      adminName: req.adminName || 'System',
+      actionType: 'CREATE_WIN_RULE',
+      details: `Created win rule for room ${roomId}: ${minP}-${maxP} players = ${winP}%`,
+      ipAddress: req.adminIp || req.ip || '0.0.0.0',
+    });
+
+    logger.info(`Admin ${req.adminId} created win rule for room ${roomId}: ${minP}-${maxP} = ${winP}%`);
+
+    res.json({
+      id: rule.id,
+      room_id: rule.roomId,
+      min_players: rule.minPlayers,
+      max_players: rule.maxPlayers,
+      win_percentage: rule.winPercentage,
+      created_at: rule.createdAt,
+      updated_at: rule.updatedAt,
+    });
+  } catch (error) {
+    logger.error('Create win rule error:', error);
+    res.status(400).json({ error: error.message || 'Failed to create win rule' });
+  }
+});
+
+// PUT /api/game-rooms/:roomId/win-rules/:ruleId — update a rule
+router.put('/:roomId/win-rules/:ruleId', async (req, res) => {
+  try {
+    const { roomId, ruleId } = req.params;
+    const { min_players, max_players, win_percentage } = req.body;
+
+    const minP = parseInt(min_players);
+    const maxP = parseInt(max_players);
+    const winP = parseInt(win_percentage);
+
+    if (minP < 1 || maxP < minP || winP < 1 || winP > 100) {
+      return res.status(400).json({ error: 'Invalid values' });
+    }
+
+    // Get existing rules excluding this one
+    const existingRules = await db.select()
+      .from(winPercentageRules)
+      .where(
+        and(
+          eq(winPercentageRules.roomId, parseInt(roomId)),
+          sql`${winPercentageRules.id} != ${parseInt(ruleId)}`
+        )
+      );
+
+    // Validate with updated rule
+    const allRules = [
+      ...existingRules.map(r => ({ min_players: r.minPlayers, max_players: r.maxPlayers })),
+      { min_players: minP, max_players: maxP }
+    ];
+
+    await validateRules(parseInt(roomId), allRules, parseInt(ruleId));
+
+    // Update rule
+    const [rule] = await db.update(winPercentageRules)
+      .set({
+        minPlayers: minP,
+        maxPlayers: maxP,
+        winPercentage: winP,
+        updatedAt: new Date(),
+      })
+      .where(eq(winPercentageRules.id, parseInt(ruleId)))
+      .returning();
+
+    if (!rule) {
+      return res.status(404).json({ error: 'Rule not found' });
+    }
+
+    // Log audit
+    await db.insert(auditLogs).values({
+      adminId: req.adminId || 'system',
+      adminName: req.adminName || 'System',
+      actionType: 'UPDATE_WIN_RULE',
+      details: `Updated win rule ${ruleId}: ${minP}-${maxP} players = ${winP}%`,
+      ipAddress: req.adminIp || req.ip || '0.0.0.0',
+    });
+
+    logger.info(`Admin ${req.adminId} updated win rule ${ruleId}: ${minP}-${maxP} = ${winP}%`);
+
+    res.json({
+      id: rule.id,
+      room_id: rule.roomId,
+      min_players: rule.minPlayers,
+      max_players: rule.maxPlayers,
+      win_percentage: rule.winPercentage,
+      created_at: rule.createdAt,
+      updated_at: rule.updatedAt,
+    });
+  } catch (error) {
+    logger.error('Update win rule error:', error);
+    res.status(400).json({ error: error.message || 'Failed to update win rule' });
+  }
+});
+
+// DELETE /api/game-rooms/:roomId/win-rules/:ruleId — delete a rule
+router.delete('/:roomId/win-rules/:ruleId', async (req, res) => {
+  try {
+    const { roomId, ruleId } = req.params;
+
+    // Check if rule exists
+    const [existing] = await db.select()
+      .from(winPercentageRules)
+      .where(eq(winPercentageRules.id, parseInt(ruleId)));
+
+    if (!existing) {
+      return res.status(404).json({ error: 'Rule not found' });
+    }
+
+    // Get remaining rules after deletion
+    const remainingRules = await db.select()
+      .from(winPercentageRules)
+      .where(
+        and(
+          eq(winPercentageRules.roomId, parseInt(roomId)),
+          sql`${winPercentageRules.id} != ${parseInt(ruleId)}`
+        )
+      );
+
+    // Validate remaining rules still provide complete coverage
+    if (remainingRules.length > 0) {
+      const rules = remainingRules.map(r => ({ min_players: r.minPlayers, max_players: r.maxPlayers }));
+      await validateRules(parseInt(roomId), rules);
+    }
+
+    // Delete rule
+    await db.delete(winPercentageRules).where(eq(winPercentageRules.id, parseInt(ruleId)));
+
+    // Log audit
+    await db.insert(auditLogs).values({
+      adminId: req.adminId || 'system',
+      adminName: req.adminName || 'System',
+      actionType: 'DELETE_WIN_RULE',
+      details: `Deleted win rule ${ruleId} from room ${roomId}`,
+      ipAddress: req.adminIp || req.ip || '0.0.0.0',
+    });
+
+    logger.info(`Admin ${req.adminId} deleted win rule ${ruleId} from room ${roomId}`);
+
+    res.json({ success: true, message: 'Rule deleted successfully' });
+  } catch (error) {
+    logger.error('Delete win rule error:', error);
+    res.status(400).json({ error: error.message || 'Failed to delete win rule' });
+  }
+});
+
+// PATCH /api/game-rooms/:roomId/toggle-dynamic-percentage — toggle dynamic percentage
+router.patch('/:roomId/toggle-dynamic-percentage', async (req, res) => {
+  try {
+    const { roomId } = req.params;
+    const { use_dynamic_percentage } = req.body;
+
+    if (typeof use_dynamic_percentage !== 'boolean') {
+      return res.status(400).json({ error: 'use_dynamic_percentage must be a boolean' });
+    }
+
+    const [room] = await db.update(gameRooms)
+      .set({ useDynamicPercentage: use_dynamic_percentage })
+      .where(eq(gameRooms.id, parseInt(roomId)))
+      .returning();
+
+    if (!room) {
+      return res.status(404).json({ error: 'Room not found' });
+    }
+
+    // Log audit
+    await db.insert(auditLogs).values({
+      adminId: req.adminId || 'system',
+      adminName: req.adminName || 'System',
+      actionType: 'TOGGLE_DYNAMIC_PERCENTAGE',
+      details: `${use_dynamic_percentage ? 'Enabled' : 'Disabled'} dynamic percentage for room ${roomId}`,
+      ipAddress: req.adminIp || req.ip || '0.0.0.0',
+    });
+
+    logger.info(`Admin ${req.adminId} ${use_dynamic_percentage ? 'enabled' : 'disabled'} dynamic percentage for room ${roomId}`);
+
+    res.json({
+      id: room.id,
+      use_dynamic_percentage: room.useDynamicPercentage,
+    });
+  } catch (error) {
+    logger.error('Toggle dynamic percentage error:', error);
+    res.status(500).json({ error: 'Failed to toggle dynamic percentage' });
   }
 });
 

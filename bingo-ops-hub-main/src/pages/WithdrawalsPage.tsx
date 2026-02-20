@@ -21,7 +21,7 @@ export default function WithdrawalsPage() {
   const [showApproveDialog, setShowApproveDialog] = useState(false);
   const [filter, setFilter] = useState<Withdrawal["status"] | "all">("all");
 
-  const { data: withdrawals = [], isLoading } = useQuery({
+  const { data: withdrawals = [], isLoading, isError, error } = useQuery({
     queryKey: ["withdrawals"],
     queryFn: () => fetchWithdrawals(),
     refetchInterval: 10000,
@@ -61,11 +61,37 @@ export default function WithdrawalsPage() {
 
   const canReview = (w: any) => w.status === "pending";
   const canApproveReject = (w: any) => w.status === "under_review" && w.assigned_admin === ADMIN_ID();
-  const isLocked = (w: any) => w.status === "under_review" && w.assigned_admin !== ADMIN_ID();
+  const isLocked = (w: any) => w.status === "under_review" && w.assigned_admin && w.assigned_admin !== ADMIN_ID();
   const insufficientBalance = (w: any) => w.user_wallet < w.amount;
 
   if (isLoading) {
     return <div className="flex h-64 items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
+  }
+
+  if (isError) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Withdrawal Management</h1>
+          <p className="text-sm text-muted-foreground">Review and approve withdrawal requests</p>
+        </div>
+        <div className="glass-card flex flex-col items-center gap-3 p-12">
+          <AlertTriangle className="h-12 w-12 text-status-rejected" />
+          <p className="text-lg font-semibold">Unable to Load Withdrawals</p>
+          <p className="text-sm text-muted-foreground">
+            {error instanceof Error ? error.message : "Please try again later."}
+          </p>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => queryClient.invalidateQueries({ queryKey: ["withdrawals"] })}
+            className="mt-2"
+          >
+            Retry
+          </Button>
+        </div>
+      </div>
+    );
   }
 
   return (

@@ -1,23 +1,35 @@
 // ─── Mesob Bingo Admin API Client ────────────────────────────────────
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001';
-const API_KEY = import.meta.env.VITE_API_KEY || 'mesob-admin-secret';
 
-// Admin identity (stored in localStorage for audit tracking)
-const getAdminId = () => localStorage.getItem('mesob_admin_id') || '1';
-const getAdminName = () => localStorage.getItem('mesob_admin_name') || 'Admin';
+// Get JWT token from localStorage
+const getToken = () => localStorage.getItem('mesob_admin_token');
 
 async function apiRequest<T>(path: string, options: RequestInit = {}): Promise<T> {
+    const token = getToken();
+    
+    if (!token) {
+        // Redirect to login if no token
+        window.location.href = '/login';
+        throw new Error('No authentication token');
+    }
+
     const res = await fetch(`${API_BASE}${path}`, {
         ...options,
         headers: {
             'Content-Type': 'application/json',
-            'X-API-KEY': API_KEY,
-            'X-Admin-Id': getAdminId(),
-            'X-Admin-Name': getAdminName(),
+            'Authorization': `Bearer ${token}`,
             ...options.headers,
         },
     });
+
+    if (res.status === 401) {
+        // Token expired or invalid - redirect to login
+        localStorage.removeItem('mesob_admin_token');
+        localStorage.removeItem('mesob_admin_authenticated');
+        window.location.href = '/login';
+        throw new Error('Authentication expired');
+    }
 
     if (!res.ok) {
         const err = await res.json().catch(() => ({ error: res.statusText }));
@@ -140,4 +152,40 @@ export const updateGameRoom = (id: number, data: {
 export const deleteGameRoom = (id: number) =>
     apiRequest<any>(`/api/game-rooms/${id}`, {
         method: 'DELETE',
+    });
+
+// ─── Win Percentage Rules ────────────────────────────────────────────
+export const fetchWinRules = (roomId: number) =>
+    apiRequest<any[]>(`/api/game-rooms/${roomId}/win-rules`);
+
+export const createWinRule = (roomId: number, data: {
+    min_players: number;
+    max_players: number;
+    win_percentage: number;
+    skip_validation?: boolean;
+}) =>
+    apiRequest<any>(`/api/game-rooms/${roomId}/win-rules`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+    });
+
+export const updateWinRule = (roomId: number, ruleId: number, data: {
+    min_players: number;
+    max_players: number;
+    win_percentage: number;
+}) =>
+    apiRequest<any>(`/api/game-rooms/${roomId}/win-rules/${ruleId}`, {
+        method: 'PUT',
+        body: JSON.stringify(data),
+    });
+
+export const deleteWinRule = (roomId: number, ruleId: number) =>
+    apiRequest<any>(`/api/game-rooms/${roomId}/win-rules/${ruleId}`, {
+        method: 'DELETE',
+    });
+
+export const toggleDynamicPercentage = (roomId: number, enabled: boolean) =>
+    apiRequest<any>(`/api/game-rooms/${roomId}/toggle-dynamic-percentage`, {
+        method: 'PATCH',
+        body: JSON.stringify({ use_dynamic_percentage: enabled }),
     });

@@ -39,11 +39,13 @@ function useCarousel() {
 }
 
 const Carousel = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement> & CarouselProps>(
-  ({ orientation = "horizontal", opts, setApi, plugins, className, children, ...props }, ref) => {
+  ({ orientation, opts, setApi, plugins, className, children, ...props }, ref) => {
+    const resolvedOrientation = orientation ?? (opts?.axis === "y" ? "vertical" : "horizontal");
+    
     const [carouselRef, api] = useEmblaCarousel(
       {
         ...opts,
-        axis: orientation === "horizontal" ? "x" : "y",
+        axis: resolvedOrientation === "horizontal" ? "x" : "y",
       },
       plugins,
     );
@@ -99,6 +101,7 @@ const Carousel = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivEl
 
       return () => {
         api?.off("select", onSelect);
+        api?.off("reInit", onSelect);
       };
     }, [api, onSelect]);
 
@@ -108,7 +111,7 @@ const Carousel = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivEl
           carouselRef,
           api: api,
           opts,
-          orientation: orientation || (opts?.axis === "y" ? "vertical" : "horizontal"),
+          orientation: resolvedOrientation,
           scrollPrev,
           scrollNext,
           canScrollPrev,
@@ -118,6 +121,7 @@ const Carousel = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivEl
         <div
           ref={ref}
           onKeyDownCapture={handleKeyDown}
+          tabIndex={0}
           className={cn("relative", className)}
           role="region"
           aria-roledescription="carousel"

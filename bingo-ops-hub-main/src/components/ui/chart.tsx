@@ -65,18 +65,45 @@ const ChartStyle = ({ id, config }: { id: string; config: ChartConfig }) => {
     return null;
   }
 
+  // Sanitize CSS identifier (id and keys)
+  const sanitizeIdentifier = (str: string): string => {
+    // Remove any characters that aren't alphanumeric, dash, or underscore
+    return str.replace(/[^a-zA-Z0-9_-]/g, '');
+  };
+
+  // Validate color value (hex, rgb, hsl, or CSS color name)
+  const isValidColor = (color: string): boolean => {
+    // Allow hex colors, rgb/rgba, hsl/hsla, and common CSS color keywords
+    const colorPattern = /^(#[0-9a-fA-F]{3,8}|rgb\(|rgba\(|hsl\(|hsla\(|[a-z]+)$/;
+    return colorPattern.test(color.trim());
+  };
+
+  const sanitizedId = sanitizeIdentifier(id);
+
   return (
     <style
       dangerouslySetInnerHTML={{
         __html: Object.entries(THEMES)
           .map(
             ([theme, prefix]) => `
-${prefix} [data-chart=${id}] {
+${prefix} [data-chart="${sanitizedId}"] {
 ${colorConfig
   .map(([key, itemConfig]) => {
     const color = itemConfig.theme?.[theme as keyof typeof itemConfig.theme] || itemConfig.color;
-    return color ? `  --color-${key}: ${color};` : null;
+    if (!color) return null;
+    
+    const sanitizedKey = sanitizeIdentifier(key);
+    const colorValue = String(color).trim();
+    
+    // Only include valid colors to prevent CSS injection
+    if (!isValidColor(colorValue)) {
+      console.warn(`Invalid color value for ${sanitizedKey}: ${colorValue}`);
+      return null;
+    }
+    
+    return `  --color-${sanitizedKey}: ${colorValue};`;
   })
+  .filter(Boolean)
   .join("\n")}
 }
 `,
@@ -207,7 +234,7 @@ const ChartTooltipContent = React.forwardRef<
                         {nestLabel ? tooltipLabel : null}
                         <span className="text-muted-foreground">{itemConfig?.label || item.name}</span>
                       </div>
-                      {item.value && (
+                      {item.value !== undefined && item.value !== null && (
                         <span className="font-mono font-medium tabular-nums text-foreground">
                           {item.value.toLocaleString()}
                         </span>

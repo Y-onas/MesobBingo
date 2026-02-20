@@ -22,7 +22,7 @@ export default function DepositsPage() {
   const [showScreenshot, setShowScreenshot] = useState(false);
   const [filter, setFilter] = useState<Deposit["status"] | "all">("all");
 
-  const { data: deposits = [], isLoading } = useQuery({
+  const { data: deposits = [], isLoading, isError, error } = useQuery({
     queryKey: ["deposits"],
     queryFn: () => fetchDeposits(),
     refetchInterval: 10000,
@@ -68,6 +68,32 @@ export default function DepositsPage() {
     return (
       <div className="flex h-64 items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Deposit Management</h1>
+          <p className="text-sm text-muted-foreground">Review and approve user deposits</p>
+        </div>
+        <div className="glass-card flex flex-col items-center gap-3 p-12">
+          <AlertTriangle className="h-12 w-12 text-status-rejected" />
+          <p className="text-lg font-semibold">Unable to Load Deposits</p>
+          <p className="text-sm text-muted-foreground">
+            {error instanceof Error ? error.message : "Please try again later."}
+          </p>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => queryClient.invalidateQueries({ queryKey: ["deposits"] })}
+            className="mt-2"
+          >
+            Retry
+          </Button>
+        </div>
       </div>
     );
   }

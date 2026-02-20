@@ -210,11 +210,21 @@ export default function UsersPage() {
                 <Button size="sm" variant="outline" onClick={() => { setShowProfile(false); setShowAdjust(true); }}>
                   <Wallet className="mr-1 h-3 w-3" /> Adjust Wallet
                 </Button>
-                <Button size="sm" variant="outline" onClick={() => resetBonusMut.mutate(selectedUser.telegram_id)}>
+                <Button 
+                  size="sm" 
+                  variant="outline" 
+                  onClick={() => resetBonusMut.mutate(selectedUser.telegram_id)}
+                  disabled={resetBonusMut.isPending}
+                >
                   <RotateCcw className="mr-1 h-3 w-3" /> Reset Bonus
                 </Button>
                 {!selectedUser.phone_verified && (
-                  <Button size="sm" variant="outline" onClick={() => verifyPhoneMut.mutate(selectedUser.telegram_id)}>
+                  <Button 
+                    size="sm" 
+                    variant="outline" 
+                    onClick={() => verifyPhoneMut.mutate(selectedUser.telegram_id)}
+                    disabled={verifyPhoneMut.isPending}
+                  >
                     <Phone className="mr-1 h-3 w-3" /> Verify Phone
                   </Button>
                 )}
@@ -222,6 +232,7 @@ export default function UsersPage() {
                   size="sm"
                   variant={selectedUser.is_banned ? "outline" : "destructive"}
                   onClick={() => { banMut.mutate(selectedUser.telegram_id); setShowProfile(false); }}
+                  disabled={banMut.isPending}
                 >
                   <Ban className="mr-1 h-3 w-3" /> {selectedUser.is_banned ? "Unban" : "Ban"}
                 </Button>
@@ -254,8 +265,16 @@ export default function UsersPage() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowAdjust(false)}>Cancel</Button>
             <Button
-              onClick={() => selectedUser && adjustMut.mutate({ id: selectedUser.telegram_id, amount: parseFloat(adjustAmount), reason: adjustReason })}
-              disabled={!adjustAmount || !adjustReason.trim() || adjustMut.isPending}
+              onClick={() => {
+                if (!selectedUser) return;
+                const amount = Number(adjustAmount);
+                if (!Number.isFinite(amount)) {
+                  toast({ title: "Invalid amount", description: "Enter a valid number", variant: "destructive" });
+                  return;
+                }
+                adjustMut.mutate({ id: selectedUser.telegram_id, amount, reason: adjustReason.trim() });
+              }}
+              disabled={!adjustReason.trim() || adjustMut.isPending || !Number.isFinite(Number(adjustAmount))}
             >
               {adjustMut.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
               Apply Adjustment
