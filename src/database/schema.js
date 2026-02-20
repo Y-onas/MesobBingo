@@ -120,7 +120,7 @@ const gameRooms = pgTable('game_rooms', {
   expectedPayout: numeric('expected_payout', { precision: 12, scale: 2 }).default('0').notNull(),
   commission: numeric('commission', { precision: 12, scale: 2 }).default('0').notNull(),
   status: varchar('status', { length: 20 }).default('waiting').notNull(), // waiting, active, completed
-  winnerTimeWindowMs: integer('winner_time_window_ms').default(1000).notNull(), // NEW: Time window for multiple winners
+  winnerTimeWindowMs: integer('winner_time_window_ms').default(100).notNull(), // Time window for multiple winners (100ms = imperceptible to humans)
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 

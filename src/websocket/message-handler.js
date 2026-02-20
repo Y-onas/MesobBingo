@@ -16,6 +16,9 @@ function registerHandlers(socket, engine, connManager, rateLimiter) {
   // ─── Per-event wrapper with rate limiting ─────────────────────
   const withRateLimit = (handler) => {
     return async (data, callback) => {
+      // Update last activity timestamp
+      connManager.touch(socketId);
+      
       // Global rate limit
       if (!rateLimiter.checkGlobal(socketId)) {
         logger.warn(`Rate limit exceeded for ${socketId}`);
@@ -161,7 +164,22 @@ function registerHandlers(socket, engine, connManager, rateLimiter) {
       return;
     }
 
-    const result = await engine.claimBingo(socketId, telegramId, validation.data.gameId);
+    // Extract markedNumbers if provided
+    const { gameId, markedNumbers } = validation.data;
+
+    // Additional validation for markedNumbers if provided
+    if (markedNumbers !== undefined && markedNumbers !== null) {
+      if (!Array.isArray(markedNumbers)) {
+        socket.emit(SOCKET_EVENTS.ERROR, { message: 'Invalid marked numbers format' });
+        return;
+      }
+      if (!markedNumbers.every(n => typeof n === 'number' && Number.isInteger(n) && n >= 1 && n <= 75)) {
+        socket.emit(SOCKET_EVENTS.ERROR, { message: 'Invalid marked numbers values' });
+        return;
+      }
+    }
+
+    const result = await engine.claimBingo(socketId, telegramId, gameId, markedNumbers || null);
 
     socket.emit(SOCKET_EVENTS.BINGO_RESULT, {
       success: result.success,

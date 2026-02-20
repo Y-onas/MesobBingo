@@ -1,0 +1,211 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Mesob Bingo Design System - Ethiopian-inspired warm palette */
+
+@layer base {
+  :root {
+    /* Dark background like the image */
+    --background: 210 20% 10%;
+    --foreground: 0 0% 95%;
+
+    /* Cards with dark theme */
+    --card: 210 18% 14%;
+    --card-foreground: 0 0% 95%;
+
+    --popover: 210 18% 12%;
+    --popover-foreground: 0 0% 95%;
+
+    /* Primary: Bright Orange (like JOIN GAME button) */
+    --primary: 20 100% 55%;
+    --primary-foreground: 0 0% 100%;
+
+    /* Secondary: Dark gray */
+    --secondary: 210 15% 20%;
+    --secondary-foreground: 0 0% 95%;
+
+    /* Muted tones */
+    --muted: 210 15% 18%;
+    --muted-foreground: 210 10% 60%;
+
+    /* Accent: Orange */
+    --accent: 20 100% 55%;
+    --accent-foreground: 0 0% 100%;
+
+    /* Destructive: Red */
+    --destructive: 0 75% 55%;
+    --destructive-foreground: 0 0% 95%;
+
+    /* Success: Teal/Green */
+    --success: 165 70% 45%;
+    --success-foreground: 0 0% 100%;
+
+    /* Borders and inputs */
+    --border: 210 15% 22%;
+    --input: 210 15% 18%;
+    --ring: 20 100% 55%;
+
+    --radius: 1rem;
+
+    /* Custom bingo tokens */
+    --board-glow: 160 60% 45%;
+    --current-call: 330 85% 60%;
+    --bingo-btn: 16 80% 55%;
+
+    /* Custom gradients */
+    --gradient-primary: linear-gradient(180deg, hsl(210 20% 10%), hsl(210 22% 8%));
+    --gradient-orange: linear-gradient(135deg, hsl(20 100% 55%), hsl(25 100% 50%));
+    --gradient-success: linear-gradient(135deg, hsl(165 70% 45%), hsl(170 65% 40%));
+    --gradient-card: linear-gradient(180deg, hsl(210 18% 16%) 0%, hsl(210 18% 12%) 100%);
+
+    /* Glass effect */
+    --glass-bg: hsl(210 18% 14% / 0.8);
+    --glass-border: hsl(210 15% 25% / 0.3);
+
+    /* Bingo letter colors */
+    --bingo-b: 220 75% 55%;
+    --bingo-i: 20 100% 55%;
+    --bingo-n: 165 70% 45%;
+    --bingo-g: 270 60% 60%;
+    --bingo-o: 0 75% 55%;
+
+    /* Number states */
+    --number-called: 165 70% 45%;
+    --number-marked: 20 100% 55%;
+    --number-default: 210 15% 20%;
+
+    --sidebar-background: 210 20% 8%;
+    --sidebar-foreground: 0 0% 95%;
+    --sidebar-primary: 20 100% 55%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 210 18% 14%;
+    --sidebar-accent-foreground: 0 0% 95%;
+    --sidebar-border: 210 15% 20%;
+    --sidebar-ring: 20 100% 55%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+
+    font-family: Inter, system-ui, -apple-system, sans-serif;
+    background: var(--gradient-primary);
+    min-height: 100vh;
+  }
+}
+
+@layer components {
+  /* Glass card effect */
+  .glass-card {
+    background: var(--glass-bg);
+    backdrop-filter: blur(12px);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius);
+  }
+
+  /* Gold shimmer effect */
+  .shimmer-orange {
+    background: linear-gradient(
+      90deg,
+      hsl(20 100% 55%) 0%,
+      hsl(25 100% 65%) 50%,
+      hsl(20 100% 55%) 100%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 2s ease-in-out infinite;
+  }
+
+  @keyframes shimmer {
+    0%, 100% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+  }
+
+  /* Bingo ball animation */
+  .bingo-ball {
+    animation: bounce-gentle 1s ease-in-out infinite;
+  }
+
+  @keyframes bounce-gentle {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-4px); }
+  }
+
+  /* Pulse glow effect */
+  .glow-pulse {
+    animation: glow 2s ease-in-out infinite;
+  }
+
+  @keyframes glow {
+    0%, 100% { 
+      box-shadow: 0 0 20px hsl(20 100% 55% / 0.3);
+    }
+    50% { 
+      box-shadow: 0 0 40px hsl(20 100% 55% / 0.6);
+    }
+  }
+
+  /* Celebration animation */
+  .celebrate {
+    animation: celebrate 0.6s ease-out;
+  }
+
+  @keyframes celebrate {
+    0% { transform: scale(0.8); opacity: 0; }
+    50% { transform: scale(1.05); }
+    100% { transform: scale(1); opacity: 1; }
+  }
+
+  /* Number grid item */
+  .number-cell {
+    @apply flex items-center justify-center rounded-lg font-bold text-sm transition-all duration-200;
+
+    aspect-ratio: 1;
+  }
+
+  .number-cell:hover {
+    transform: scale(1.05);
+  }
+
+  /* Active game indicator */
+  .live-indicator {
+    @apply w-2 h-2 rounded-full bg-success;
+
+    animation: pulse-live 1.5s ease-in-out infinite;
+  }
+
+  @keyframes pulse-live {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.5; transform: scale(1.2); }
+  }
+}
+
+@layer utilities {
+  .text-gradient-orange {
+    background: var(--gradient-orange);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .bg-gradient-primary {
+    background: var(--gradient-primary);
+  }
+
+  .bg-gradient-orange {
+    background: var(--gradient-orange);
+  }
+
+  .bg-gradient-success {
+    background: var(--gradient-success);
+  }
+
+  .bg-gradient-card {
+    background: var(--gradient-card);
+  }
+}

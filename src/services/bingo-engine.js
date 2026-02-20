@@ -180,7 +180,7 @@ class BingoEngine {
       maxPlayers: room.maxPlayers,
       countdownTime: room.countdownTime,
       winningPercentage: room.winningPercentage,
-      winnerTimeWindowMs: room.winnerTimeWindowMs || 1000, // NEW: Time window for multiple winners
+      winnerTimeWindowMs: room.winnerTimeWindowMs ?? 100, // Time window for multiple winners (100ms)
       status: GAME_STATES.LOBBY,
       players: new Set(),       // Set<telegramId>
       playerBoards: new Map(),  // telegramId → boardNumber
@@ -489,7 +489,7 @@ class BingoEngine {
   /**
    * Handle BINGO claim — server validates everything
    */
-  async claimBingo(socketId, telegramId, gameId) {
+  async claimBingo(socketId, telegramId, gameId, markedNumbers = null) {
     const game = this.activeGames.get(gameId);
     if (!game) return { success: false, error: 'Game not found' };
     if (game.status !== GAME_STATES.PLAYING) return { success: false, error: 'Game not in progress' };
@@ -498,6 +498,19 @@ class BingoEngine {
 
     const boardNumber = game.playerBoards.get(telegramId);
     if (!boardNumber) return { success: false, error: 'No board assigned' };
+
+    // Validate markedNumbers input
+    if (markedNumbers !== null) {
+      if (!Array.isArray(markedNumbers)) {
+        return { success: false, error: 'Invalid marked numbers format' };
+      }
+      if (markedNumbers.length > 75) {
+        return { success: false, error: 'Too many marked numbers' };
+      }
+      if (!markedNumbers.every(n => typeof n === 'number' && n >= 1 && n <= 75)) {
+        return { success: false, error: 'Invalid marked numbers values' };
+      }
+    }
 
     // Use PostgreSQL transaction (NO row locking for concurrent claims)
     const client = await pool.connect();
@@ -524,8 +537,33 @@ class BingoEngine {
       const calledNums = dbCalled.map(r => r.number);
       const boardContent = JSON.parse(dbBoard.content);
 
+      // Determine which numbers to validate against
+      let numbersToValidate;
+      
+      if (markedNumbers !== null && markedNumbers.length > 0) {
+        // MANUAL MARKING MODE: Validate against marked numbers only
+        const calledSet = new Set(calledNums);
+        
+        // Anti-cheat: Verify all marked numbers were actually called
+        for (const num of markedNumbers) {
+          if (!calledSet.has(num)) {
+            logger.warn(`Cheating attempt by ${telegramId} in game ${gameId}: marked uncalled number ${num}`);
+            const falseClaimResult = await this._handleFalseClaim(client, game, telegramId, gameId);
+            await client.query('COMMIT');
+            return falseClaimResult;
+          }
+        }
+        
+        numbersToValidate = markedNumbers;
+        logger.debug(`Validating BINGO claim for ${telegramId} using ${markedNumbers.length} marked numbers`);
+      } else {
+        // FALLBACK MODE: Use all called numbers (backward compatibility)
+        numbersToValidate = calledNums;
+        logger.debug(`Validating BINGO claim for ${telegramId} using all ${calledNums.length} called numbers (fallback mode)`);
+      }
+
       // Server-side win validation
-      const result = validateBingoWin(boardContent, calledNums, 'any');
+      const result = validateBingoWin(boardContent, numbersToValidate, 'any');
 
       if (!result.isWin) {
         // INVALID CLAIM - Handle false claim
@@ -611,7 +649,7 @@ class BingoEngine {
   }
 
   /**
-   * Helper: Handle false claim - track, warn, or remove player
+   * Helper: Handle false claim - remove player immediately
    */
   async _handleFalseClaim(client, game, telegramId, gameId) {
     const currentCount = game.falseClaimCount.get(telegramId) || 0;
@@ -624,30 +662,15 @@ class BingoEngine {
       [newCount, gameId, telegramId]
     );
 
-    if (newCount === 1) {
-      // First false claim - WARNING
-      logger.warn(`False BINGO claim #1 by ${telegramId} in game ${gameId}`);
+    // Immediate removal on first false claim
+    logger.warn(`False BINGO claim by ${telegramId} in game ${gameId} - REMOVING PLAYER`);
 
-      this._emitToPlayer(telegramId, 'false_claim_warning', {
-        message: 'Invalid BINGO claim. This is your first warning. Another false claim will remove you from the game.',
-        remainingAttempts: 1
-      });
+    await this._removePlayerForFalseClaims(client, game, telegramId, gameId);
 
-      return {
-        success: false,
-        error: 'Invalid BINGO — no winning pattern found. This is your first warning.'
-      };
-    } else {
-      // Second false claim - REMOVAL
-      logger.warn(`False BINGO claim #2 by ${telegramId} in game ${gameId} - REMOVING PLAYER`);
-
-      await this._removePlayerForFalseClaims(client, game, telegramId, gameId);
-
-      return {
-        success: false,
-        error: 'You have been removed from the game for repeated false claims. Entry fee is not refunded.'
-      };
-    }
+    return {
+      success: false,
+      error: 'Invalid BINGO claim. You have been removed from the game. Entry fee is not refunded.'
+    };
   }
 
   /**
@@ -665,21 +688,30 @@ class BingoEngine {
       [gameId, telegramId]
     );
 
-    // Get player name
-    const [player] = await db.select().from(users).where(eq(users.telegramId, telegramId)).limit(1);
-    const playerName = player ? (player.firstName || player.username || `User ${telegramId}`) : `User ${telegramId}`;
+    // Get player name (using transaction client for consistency)
+    const { rows: [player] } = await client.query(
+      'SELECT first_name, username FROM users WHERE telegram_id = $1 LIMIT 1',
+      [telegramId]
+    );
+    const playerName = player ? (player.first_name || player.username || `User ${telegramId}`) : `User ${telegramId}`;
 
     // Redirect removed player to lobby
     this._emitToPlayer(telegramId, 'force_leave_game', {
       reason: 'removed_for_false_claims',
-      message: 'You have been removed from the game for repeated false BINGO claims. Entry fee is not refunded.'
+      message: 'You have been removed from the game for an invalid BINGO claim. Entry fee is not refunded.'
     });
+
+    // Ensure server-side removal from the game room
+    const sockets = this.connectionManager.getSocketsByUser(telegramId);
+    if (sockets && sockets.size > 0) {
+      sockets.forEach(socketId => this.connectionManager.leaveGame(socketId));
+    }
 
     // Notify all OTHER players
     this._broadcastToGame(gameId, 'player_removed', {
       telegramId,
       playerName,
-      reason: 'repeated_false_claims'
+      reason: 'false_claim'
     });
 
     logger.debug(`Player removed from game ${gameId} for false claims. ${game.playerCount} players remaining.`);
@@ -745,9 +777,12 @@ class BingoEngine {
       // Stop number calling
       this._stopTimers(gameId);
 
-      // Get winner display name
-      const [winner] = await db.select().from(users).where(eq(users.telegramId, telegramId)).limit(1);
-      const winnerName = winner ? (winner.firstName || winner.username || `User ${telegramId}`) : `User ${telegramId}`;
+      // Get winner display name (using transaction client)
+      const { rows: [winner] } = await client.query(
+        'SELECT first_name, username FROM users WHERE telegram_id = $1 LIMIT 1',
+        [telegramId]
+      );
+      const winnerName = winner ? (winner.first_name || winner.username || `User ${telegramId}`) : `User ${telegramId}`;
 
       // Broadcast winner to all players
       this._broadcastToGame(gameId, 'game_won', {

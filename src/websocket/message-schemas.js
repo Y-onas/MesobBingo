@@ -13,6 +13,7 @@ const SelectBoardSchema = z.object({
 
 const ClaimBingoSchema = z.object({
   gameId: z.number().int().positive(),
+  markedNumbers: z.array(z.number().int().min(1).max(75)).optional(),
 });
 
 const LeaveGameSchema = z.object({
