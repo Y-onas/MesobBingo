@@ -1,5 +1,5 @@
 export interface Deposit {
-  id: string;
+  id: number;
   telegram_id: string;
   username: string;
   amount: number;
@@ -14,7 +14,7 @@ export interface Deposit {
 }
 
 export interface Withdrawal {
-  id: string;
+  id: number;
   telegram_id: string;
   username: string;
   amount: number;

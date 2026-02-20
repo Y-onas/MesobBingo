@@ -227,7 +227,7 @@ export default function DepositsPage() {
             <Button variant="outline" onClick={() => setShowApproveDialog(false)}>Cancel</Button>
             <Button
               className="bg-status-approved hover:bg-status-approved/80 text-primary-foreground"
-              onClick={() => selectedDeposit && approveMutation.mutate(selectedDeposit.id as any)}
+              onClick={() => selectedDeposit && approveMutation.mutate(selectedDeposit.id)}
               disabled={approveMutation.isPending}
             >
               {approveMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
@@ -249,7 +249,7 @@ export default function DepositsPage() {
             <Button variant="outline" onClick={() => setShowRejectDialog(false)}>Cancel</Button>
             <Button
               variant="destructive"
-              onClick={() => selectedDeposit && rejectMutation.mutate({ id: selectedDeposit.id as any, reason: rejectReason })}
+              onClick={() => selectedDeposit && rejectMutation.mutate({ id: selectedDeposit.id, reason: rejectReason })}
               disabled={!rejectReason.trim() || rejectMutation.isPending}
             >
               Confirm Rejection

@@ -99,7 +99,7 @@ router.post('/verify', async (req, res) => {
 });
 
 // Legacy endpoint for backward compatibility (deprecated)
-router.post('/verify-admin', async (req, res) => {
+router.post('/verify-admin', loginLimiter, async (req, res) => {
   try {
     const { telegramId } = req.body;
     

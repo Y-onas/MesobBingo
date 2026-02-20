@@ -213,7 +213,7 @@ export default function WithdrawalsPage() {
             <Button variant="outline" onClick={() => setShowApproveDialog(false)}>Cancel</Button>
             <Button
               className="bg-status-approved hover:bg-status-approved/80 text-primary-foreground"
-              onClick={() => selected && approveMut.mutate(selected.id as any)}
+              onClick={() => selected && approveMut.mutate(selected.id)}
               disabled={approveMut.isPending}
             >
               {approveMut.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
@@ -232,7 +232,7 @@ export default function WithdrawalsPage() {
             <Button variant="outline" onClick={() => setShowRejectDialog(false)}>Cancel</Button>
             <Button
               variant="destructive"
-              onClick={() => selected && rejectMut.mutate({ id: selected.id as any, reason: rejectReason })}
+              onClick={() => selected && rejectMut.mutate({ id: selected.id, reason: rejectReason })}
               disabled={!rejectReason.trim() || rejectMut.isPending}
             >
               Confirm Rejection
