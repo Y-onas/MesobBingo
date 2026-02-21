@@ -43,6 +43,13 @@
       "when": 1771424073582,
       "tag": "0005_add_dynamic_win_percentage",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1740153600000,
+      "tag": "0006_add_pause_fields",
+      "breakpoints": true
     }
   ]
 }

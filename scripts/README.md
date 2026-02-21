@@ -105,6 +105,66 @@ Validates game table columns.
 node scripts/checks/check-game-columns.js
 ```
 
+### check-dynamic-percentage.js
+Checks dynamic win percentage configuration.
+
+```bash
+node scripts/checks/check-dynamic-percentage.js
+```
+
+### test-db-connection.js
+Tests database connection health (Neon HTTP, pg Pool, table access).
+
+```bash
+node scripts/checks/test-db-connection.js
+```
+
+Shows:
+- Neon HTTP driver status
+- pg Pool connection status
+- Table access verification
+- Server time and version
+
+### diagnose-db-errors.js
+Diagnoses database connection issues and tests rapid writes.
+
+```bash
+node scripts/checks/diagnose-db-errors.js
+```
+
+Shows:
+- Active games count
+- Connection pool status
+- Rapid write test results
+- Simulates game calling behavior
+
+### test-neon-http-writes.js
+Tests Neon HTTP driver with game-like write patterns.
+
+```bash
+node scripts/checks/test-neon-http-writes.js
+```
+
+Simulates:
+- Rapid number calls (10 iterations)
+- 2-second intervals between calls
+- Insert and update operations
+- Measures write latency
+
+### test-exit-codes.js
+Tests script exit codes for CI/CD integration.
+
+```bash
+node scripts/checks/test-exit-codes.js
+```
+
+### test-migration-paths.js
+Tests migration file paths and structure.
+
+```bash
+node scripts/checks/test-migration-paths.js
+```
+
 ### test-token.js
 Tests JWT token generation and verification.
 
@@ -149,6 +209,43 @@ Fixes withdrawal status issues (changes 'completed' to 'approved').
 ```bash
 node scripts/fixes/fix-withdrawal-status.js
 ```
+
+### update-winner-window.js
+Updates winner time window configuration for game rooms.
+
+```bash
+node scripts/fixes/update-winner-window.js
+```
+
+### enable-dynamic-percentage.js
+Enables dynamic win percentage for game rooms.
+
+```bash
+node scripts/fixes/enable-dynamic-percentage.js
+```
+
+### cleanup-stuck-games.js
+Cleans up games stuck in "playing" status for more than 2 hours.
+
+**What it does:**
+- Finds games in "playing" status older than 2 hours
+- Marks them as "completed" with finished_at timestamp
+- Prevents database load from abandoned games
+
+**Safety Features:**
+- Read-only scan first (shows what will be cleaned)
+- Only updates status and timestamp
+- Non-destructive (doesn't delete data)
+
+```bash
+node scripts/fixes/cleanup-stuck-games.js
+```
+
+**When to use:**
+- After server crashes or restarts
+- When database errors indicate stuck games
+- As weekly maintenance task
+- When monitoring shows high active game count
 
 ## Usage Notes
 

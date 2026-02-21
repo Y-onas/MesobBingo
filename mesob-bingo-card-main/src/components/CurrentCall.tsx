@@ -18,34 +18,111 @@ const LETTER_BG: Record<string, string> = {
 
 const CurrentCall = ({ letter, number, status }: CurrentCallProps) => {
   const [voiceEnabled, setVoiceEnabled] = useState(false);
+  const [speechSupported, setSpeechSupported] = useState(true);
+  const [voicesLoaded, setVoicesLoaded] = useState(false);
+
+  // Check speech synthesis support and load voices
+  useEffect(() => {
+    if (!('speechSynthesis' in window)) {
+      setSpeechSupported(false);
+      console.warn('Speech Synthesis not supported in this browser');
+      return;
+    }
+
+    // Load voices
+    const loadVoices = () => {
+      const voices = window.speechSynthesis.getVoices();
+      if (voices.length > 0) {
+        setVoicesLoaded(true);
+        console.log('Voices loaded:', voices.length);
+      }
+    };
+
+    // Try loading immediately
+    loadVoices();
+
+    // Also listen for voiceschanged event (needed in some browsers)
+    window.speechSynthesis.onvoiceschanged = loadVoices;
+
+    return () => {
+      window.speechSynthesis.onvoiceschanged = null;
+    };
+  }, []);
+
+  // Store utterance globally to prevent garbage collection in some browsers (e.g. Safari)
+  useEffect(() => {
+    if (!(window as any).utterances) {
+      (window as any).utterances = [];
+    }
+  }, []);
 
   // Auto-speak when voice is enabled and number changes
   useEffect(() => {
-    if (voiceEnabled && 'speechSynthesis' in window) {
+    if (voiceEnabled && speechSupported && 'speechSynthesis' in window) {
       // Cancel any ongoing speech
       window.speechSynthesis.cancel();
       
-      const utterance = new SpeechSynthesisUtterance(`${letter} ${number}`);
-      utterance.rate = 0.9;
-      utterance.pitch = 1;
-      utterance.volume = 1;
-      
-      window.speechSynthesis.speak(utterance);
-    }
+      // Small delay to ensure cancellation completes
+      const timeoutId = setTimeout(() => {
+        try {
+          const utterance = new SpeechSynthesisUtterance(`${letter} ${number}`);
+          utterance.rate = 0.9;
+          utterance.pitch = 1;
+          utterance.volume = 1;
+          utterance.lang = 'en-US';
+          
+          // Add event listeners for debugging
+          utterance.onstart = () => console.log('Speech started:', `${letter} ${number}`);
+          utterance.onerror = (e) => console.error('Speech error:', e);
+          utterance.onend = () => {
+            console.log('Speech ended');
+            if ((window as any).utterances) {
+              const index = (window as any).utterances.indexOf(utterance);
+              if (index !== -1) {
+                (window as any).utterances.splice(index, 1);
+              }
+            }
+          };
+          
+          if ((window as any).utterances) {
+            (window as any).utterances.push(utterance);
+          }
+          
+          window.speechSynthesis.speak(utterance);
+        } catch (error) {
+          console.error('Speech synthesis error:', error);
+        }
+      }, 100);
 
-    return () => {
-      if ('speechSynthesis' in window) {
-        window.speechSynthesis.cancel();
-      }
-    };
-  }, [letter, number, voiceEnabled]);
+      return () => {
+        clearTimeout(timeoutId);
+        // Do not cancel speech synthesis on unmount to avoid cutting it off
+      };
+    }
+  }, [letter, number, voiceEnabled, speechSupported]);
 
   const toggleVoice = () => {
-    if (voiceEnabled && 'speechSynthesis' in window) {
-      // Turning off - cancel any ongoing speech
-      window.speechSynthesis.cancel();
+    if (!speechSupported) {
+      alert('Speech synthesis is not supported in this browser/environment');
+      return;
     }
-    setVoiceEnabled(!voiceEnabled);
+
+    const newValue = !voiceEnabled;
+    setVoiceEnabled(newValue);
+
+    try {
+      if (voiceEnabled && 'speechSynthesis' in window) {
+        // Turning off - cancel any ongoing speech
+        window.speechSynthesis.cancel();
+      } else if (newValue && 'speechSynthesis' in window) {
+        // Unlock speech synthesis on mobile via direct user interaction
+        const unlockUtterance = new SpeechSynthesisUtterance('');
+        unlockUtterance.volume = 0;
+        window.speechSynthesis.speak(unlockUtterance);
+      }
+    } catch (e) {
+      console.error('Speech synthesis toggle error:', e);
+    }
   };
 
   return (
@@ -62,10 +139,13 @@ const CurrentCall = ({ letter, number, status }: CurrentCallProps) => {
         </span>
         <button 
           onClick={toggleVoice}
+          disabled={!speechSupported}
           className={cn(
             "flex items-center gap-1 transition-colors",
+            !speechSupported && "opacity-50 cursor-not-allowed",
             voiceEnabled ? "text-success" : "text-primary hover:text-primary/80"
           )}
+          title={!speechSupported ? "Speech not supported in this browser" : voiceEnabled ? "Voice On" : "Voice Off"}
         >
           {voiceEnabled ? (
             <Volume2 className="w-3 h-3 animate-pulse" />

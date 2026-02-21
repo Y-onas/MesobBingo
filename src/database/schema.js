@@ -125,7 +125,7 @@ const gameRooms = pgTable('game_rooms', {
 });
 
 // ─── Games Table (Individual Game Sessions) ─────────────────────────
-// Migration: drizzle/0003_add_game_tables.sql, drizzle/0004_add_multi_winner_support.sql
+// Migration: drizzle/0003_add_game_tables.sql, drizzle/0004_add_multi_winner_support.sql, drizzle/0006_add_pause_fields.sql
 const games = pgTable('games', {
   id: serial('id').primaryKey(),
   roomId: integer('room_id').notNull(),
@@ -140,6 +140,9 @@ const games = pgTable('games', {
   commission: numeric('commission', { precision: 12, scale: 2 }).default('0').notNull(),
   playerCount: integer('player_count').default(0).notNull(),
   totalCalls: integer('total_calls').default(0).notNull(),
+  paused: boolean('paused').default(false).notNull(), // NEW: Game paused due to all players disconnecting
+  pausedAt: timestamp('paused_at'), // NEW: When game was paused
+  notes: text('notes'), // NEW: Additional notes (e.g., house win reason)
   startedAt: timestamp('started_at'),
   finishedAt: timestamp('finished_at'),
   createdAt: timestamp('created_at').defaultNow().notNull(),

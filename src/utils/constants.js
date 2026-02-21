@@ -240,6 +240,11 @@ const CONNECTION_LIMITS = {
   MAX_PAYLOAD_BYTES: 16 * 1024, // 16KB
 };
 
+// ─── Disconnect Grace Periods ───────────────────────────────────────
+const DISCONNECT_GRACE_PERIODS = {
+  GAME_PAUSE_TIMEOUT_MS: 40000,  // 40 seconds - pause game, then house wins if no reconnection
+};
+
 // ─── Rate Limits ────────────────────────────────────────────────────
 const RATE_LIMITS = {
   GLOBAL: { windowMs: 1000, max: 10 },
@@ -262,5 +267,6 @@ module.exports = {
   WIN_PATTERNS,
   SOCKET_EVENTS,
   CONNECTION_LIMITS,
+  DISCONNECT_GRACE_PERIODS,
   RATE_LIMITS,
 };

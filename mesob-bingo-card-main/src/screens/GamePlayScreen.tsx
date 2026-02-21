@@ -1,5 +1,5 @@
 import { RefreshCw, LogOut, Volume2, VolumeX } from "lucide-react";
-import React from "react";
+import { useState, useEffect, useCallback } from "react";
 import type { GameState } from "@/hooks/useGameState";
 
 interface GamePlayScreenProps {
@@ -12,6 +12,8 @@ interface GamePlayScreenProps {
   onClaimBingo: () => void;
   onRefreshBalance: () => void;
   onLeave?: () => void;
+  voiceEnabled: boolean;
+  onVoiceToggle: (enabled: boolean) => void;
 }
 
 const BINGO_LETTERS = ['B', 'I', 'N', 'G', 'O'];
@@ -41,13 +43,25 @@ const GamePlayScreen = ({
   onClaimBingo,
   onRefreshBalance,
   onLeave,
+  voiceEnabled,
+  onVoiceToggle,
 }: GamePlayScreenProps) => {
-  const [isRefreshing, setIsRefreshing] = React.useState(false);
-  const [soundOn, setSoundOn] = React.useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [speechSupported, setSpeechSupported] = useState(true);
   
   const calledNumbers = game.calledNumbers || [];
   const calledSet = new Set(calledNumbers);
   const effectiveMarks = Array.from(markedNumbers);
+
+  // Sync voice state with localStorage on mount
+  useEffect(() => {
+    const saved = localStorage.getItem('bingoVoiceEnabled');
+    const savedValue = saved === 'true';
+    if (savedValue !== voiceEnabled) {
+      console.log('Syncing voice state from localStorage:', savedValue);
+      onVoiceToggle(savedValue);
+    }
+  }, []);
 
   const handleRefresh = () => {
     setIsRefreshing(true);
@@ -72,6 +86,108 @@ const GamePlayScreen = ({
   };
 
   const currentLetterColor = game.currentCall ? getLetterColor(game.currentCall.letter) : getLetterColor('B');
+
+  // Voice synthesis setup
+  useEffect(() => {
+    if (!('speechSynthesis' in window)) {
+      setSpeechSupported(false);
+    }
+    // Pre-load voices to ensure they are available
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.getVoices();
+    }
+  }, []);
+
+  // Store utterance globally to prevent garbage collection in some browsers (e.g. Safari)
+  useEffect(() => {
+    if (!(window as any).utterances) {
+      (window as any).utterances = [];
+    }
+  }, []);
+
+  // Auto-speak when voice is enabled and number changes
+  useEffect(() => {
+    console.log('Voice effect triggered - voiceEnabled:', voiceEnabled, 'currentCall:', game.currentCall);
+    if (voiceEnabled && speechSupported && game.currentCall && 'speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+      
+      const timeoutId = setTimeout(() => {
+        try {
+          const text = `${game.currentCall.letter} ${game.currentCall.number}`;
+          console.log('Speaking:', text);
+          const utterance = new SpeechSynthesisUtterance(text);
+          utterance.rate = 0.9;
+          utterance.pitch = 1;
+          // Set volume so it's audible
+          utterance.volume = 1;
+          utterance.lang = 'en-US';
+          
+          utterance.onstart = () => console.log('Speech started:', text);
+          utterance.onerror = (e) => console.error('Speech error:', e);
+          utterance.onend = () => {
+            console.log('Speech ended');
+            // Cleanup from global array when done to prevent memory leaks
+            if ((window as any).utterances) {
+              const index = (window as any).utterances.indexOf(utterance);
+              if (index !== -1) {
+                (window as any).utterances.splice(index, 1);
+              }
+            }
+          };
+          
+          if ((window as any).utterances) {
+            (window as any).utterances.push(utterance);
+          }
+          
+          window.speechSynthesis.speak(utterance);
+        } catch (error) {
+          console.error('Speech error:', error);
+        }
+      }, 100);
+
+      return () => {
+        clearTimeout(timeoutId);
+        // We do NOT want to cancel speech when this component unmounts or simply re-renders.
+        // It might cancel the speech prematurely. We only cancel before speaking a new number.
+      };
+    }
+  }, [game.currentCall?.letter, game.currentCall?.number, voiceEnabled, speechSupported]);
+
+  const toggleVoice = useCallback(() => {
+    if (!speechSupported) {
+      alert('Speech synthesis is not supported in this browser/environment');
+      return;
+    }
+
+    const newValue = !voiceEnabled;
+    console.log('Toggle voice clicked - Current:', voiceEnabled, 'New:', newValue);
+    
+    // Update state via parent first so UI responds immediately
+    onVoiceToggle(newValue);
+    console.log('Called onVoiceToggle with:', newValue);
+    
+    // Save to localStorage
+    try {
+      localStorage.setItem('bingoVoiceEnabled', String(newValue));
+      console.log('Saved to localStorage:', newValue);
+    } catch (e) {
+      console.error('Failed to save voice setting to localStorage', e);
+    }
+    
+    try {
+      if (voiceEnabled && 'speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+      } else if (newValue && 'speechSynthesis' in window) {
+        // Must "unlock" speech synthesis on mobile via a direct user interaction
+        // by speaking an empty text or low volume text synchronously in the click handler
+        const unlockUtterance = new SpeechSynthesisUtterance('');
+        unlockUtterance.volume = 0;
+        window.speechSynthesis.speak(unlockUtterance);
+      }
+    } catch (e) {
+      console.error('Speech synthesis toggle error:', e);
+    }
+  }, [voiceEnabled, speechSupported, onVoiceToggle]);
 
   return (
     <div className="min-h-screen bg-background p-3 flex flex-col gap-3">
@@ -135,7 +251,7 @@ const GamePlayScreen = ({
 
         {/* Right: Current Call + Board */}
         <div className="flex flex-col gap-3">
-          {/* Current Call */}
+          {/* Current Call - Beautiful design with voice */}
           <div 
             className="rounded-lg p-3 border transition-colors"
             style={{ 
@@ -164,12 +280,29 @@ const GamePlayScreen = ({
               >
                 {game.status === 'playing' ? 'Playing' : game.status === 'countdown' ? 'Ready' : 'Waiting'}
               </span>
-              <button
-                onClick={() => setSoundOn(!soundOn)}
-                className="text-muted-foreground hover:text-foreground transition-colors"
-              >
-                {soundOn ? <Volume2 size={14} /> : <VolumeX size={14} />}
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={toggleVoice}
+                  disabled={!speechSupported}
+                  type="button"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-card border border-border transition-all disabled:opacity-50 disabled:cursor-not-allowed hover:bg-accent hover:border-accent-foreground active:scale-95 cursor-pointer"
+                  title={!speechSupported ? "Speech not supported" : voiceEnabled ? "Voice On - Click to turn off" : "Voice Off - Click to turn on"}
+                  style={{ touchAction: 'manipulation' }}
+                  data-voice-enabled={voiceEnabled}
+                >
+                  {voiceEnabled ? (
+                    <>
+                      <Volume2 size={16} className="text-success animate-pulse" />
+                      <span className="text-xs font-semibold text-success">ON</span>
+                    </>
+                  ) : (
+                    <>
+                      <VolumeX size={16} className="text-muted-foreground" />
+                      <span className="text-xs font-semibold text-muted-foreground">OFF</span>
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
 
             <div className="flex items-center justify-between mb-3">

@@ -31,17 +31,6 @@ type SidebarContext = {
 
 const SidebarContext = React.createContext<SidebarContext | null>(null);
 
-// Helper to generate deterministic width from an id string.
-// This avoids SSR/SSG hydration mismatches caused by Math.random().
-function getWidthFromId(id: string): string {
-  let hash = 0;
-  for (let i = 0; i < id.length; i++) {
-    hash = ((hash << 5) - hash) + id.charCodeAt(i);
-    hash |= 0;
-  }
-  return `${(Math.abs(hash) % 40) + 50}%`;
-}
-
 function useSidebar() {
   const context = React.useContext(SidebarContext);
   if (!context) {
@@ -548,10 +537,10 @@ const SidebarMenuSkeleton = React.forwardRef<
     showIcon?: boolean;
   }
 >(({ className, showIcon = false, ...props }, ref) => {
-  // Deterministic width derived from React id to avoid SSR/SSG hydration mismatch.
-  // Produces a stable "random-like" width between 50% and 90% on server and client.
-  const id = React.useId();
-  const width = React.useMemo(() => getWidthFromId(id), [id]);
+  // Random width between 50 to 90%.
+  const width = React.useMemo(() => {
+    return `${Math.floor(Math.random() * 40) + 50}%`;
+  }, []);
 
   return (
     <div
@@ -564,6 +553,7 @@ const SidebarMenuSkeleton = React.forwardRef<
       <Skeleton
         className="h-4 max-w-[--skeleton-width] flex-1"
         data-sidebar="menu-skeleton-text"
+        suppressHydrationWarning
         style={
           {
             "--skeleton-width": width,

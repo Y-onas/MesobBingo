@@ -21,6 +21,21 @@ class BingoEngine {
     this.activeGames = new Map(); // gameId → GameState
     this.callTimers = new Map();  // gameId → timer
     this.countdownTimers = new Map(); // gameId → timer
+    this.pauseTimeouts = new Map(); // gameId → timeout (for cancelling)
+    this.endingGames = new Set(); // gameId set (prevent duplicate endings)
+
+    // Metrics tracking
+    this.metrics = {
+      gamesCreated: 0,
+      gamesCompleted: 0,
+      gamesCancelled: 0,
+      gamesPaused: 0,
+      gamesResumed: 0,
+      houseWins: 0,
+      playerWins: 0,
+      totalBetsCollected: 0,
+      totalPayouts: 0
+    };
 
     // Cleanup finished games every 5 minutes
     this._cleanupInterval = setInterval(() => this.cleanupFinished(), 300000);
@@ -204,7 +219,12 @@ class BingoEngine {
     }
 
     this.activeGames.set(dbGame.id, gameState);
-    logger.info(`Game created: ${dbGame.id} for room ${room.id} (${room.name})`);
+    this.metrics.gamesCreated++;
+    logger.logGameEvent('game_created', dbGame.id, {
+      roomId: room.id,
+      roomName: room.name,
+      entryFee: room.entryFee
+    });
 
     return gameState;
   }
@@ -457,18 +477,21 @@ class BingoEngine {
     game.calledNumbers.push(number);
     game.calledSet.add(number);
 
-    // Persist to DB
-    await db.insert(calledNumbers).values({
-      gameId,
-      number,
-      callOrder: game.calledNumbers.length,
-    }).catch(err => logger.error('Error persisting called number:', err));
+    // Persist to DB with retry logic
+    await this._retryDbOperation(async () => {
+      await db.insert(calledNumbers).values({
+        gameId,
+        number,
+        callOrder: game.calledNumbers.length,
+      });
+    }, 'persisting called number');
 
-    // Update total calls in game
-    await db.update(games)
-      .set({ totalCalls: game.calledNumbers.length })
-      .where(eq(games.id, gameId))
-      .catch(err => logger.error('Error updating total calls:', err));
+    // Update total calls in game with retry logic
+    await this._retryDbOperation(async () => {
+      await db.update(games)
+        .set({ totalCalls: game.calledNumbers.length })
+        .where(eq(games.id, gameId));
+    }, 'updating total calls');
 
     const letter = getBingoLetter(number);
 
@@ -928,7 +951,15 @@ class BingoEngine {
         });
       }
 
-      logger.info(`Game ${gameId} completed with ${winnerCount} winner(s) — ${prizePerWinner} Birr each`);
+      this.metrics.playerWins += winnerCount;
+      this.metrics.gamesCompleted++;
+      this.metrics.totalPayouts += (prizePerWinner * winnerCount);
+      
+      logger.logGameEvent('game_completed', gameId, {
+        winnerCount,
+        prizePerWinner,
+        totalPayout: prizePerWinner * winnerCount
+      });
 
       // Cleanup after delay
       setTimeout(() => {
@@ -952,9 +983,37 @@ class BingoEngine {
     const game = this.activeGames.get(gameId);
     if (!game) return;
 
-    // Can only leave before game starts playing
+    // During play - treat like abandoning the game (lose entry fee)
     if (game.status === GAME_STATES.PLAYING) {
-      // During play, just disconnect from room but don't refund
+      // Remove player from game (no refund - penalty for leaving)
+      if (game.players.has(telegramId)) {
+        game.players.delete(telegramId);
+        game.playerBoards.delete(telegramId);
+        game.playerCount--;
+
+        logger.info(`Player ${telegramId} left game ${gameId} during play (no refund)`);
+
+        // Broadcast player left
+        this._broadcastToGame(gameId, 'player_left', {
+          playerCount: game.playerCount,
+          totalPot: Math.floor(game.prizePool * (game.winningPercentage / 100)),
+        });
+
+        // Check if all players left
+        if (game.playerCount === 0) {
+          logger.info(`All players left game ${gameId} during play. Ending game.`);
+          await this._endGameNoWinner(gameId);
+        } else if (game.playerCount === 1) {
+          // Only 1 player remains - they win automatically
+          const remainingPlayerId = Array.from(game.players)[0];
+          logger.info(`Only 1 player remains in game ${gameId}. Player ${remainingPlayerId} wins automatically.`);
+          
+          // Award win to remaining player
+          const boardNumber = game.playerBoards.get(remainingPlayerId);
+          await this._awardWin(gameId, remainingPlayerId, boardNumber, 'last_player_standing');
+        }
+      }
+
       this.connectionManager.leaveGame(socketId);
       return;
     }
@@ -1015,6 +1074,12 @@ class BingoEngine {
       playerCount: game.playerCount,
       totalPot: Math.floor(game.prizePool * (game.winningPercentage / 100)),
     });
+
+    // Check if all players left during lobby/countdown
+    if (game.playerCount === 0 && [GAME_STATES.LOBBY, GAME_STATES.COUNTDOWN].includes(game.status)) {
+      logger.info(`All players left game ${gameId} during ${game.status}. Cancelling game.`);
+      await this._cancelGame(gameId, 'All players left');
+    }
   }
 
   /**
@@ -1088,9 +1153,10 @@ class BingoEngine {
 
     this._broadcastToGame(gameId, 'game_ended', { reason });
 
-    setTimeout(() => this._cleanupGame(gameId), 10000);
+    this.metrics.gamesCancelled++;
+    logger.logGameEvent('game_cancelled', gameId, { reason });
 
-    logger.info(`Game ${gameId} cancelled: ${reason}`);
+    setTimeout(() => this._cleanupGame(gameId), 10000);
   }
 
   /**
@@ -1135,6 +1201,248 @@ class BingoEngine {
     setTimeout(() => this._cleanupGame(gameId), 10000);
   }
 
+  /**
+   * End game when all players have disconnected
+   * Public method that can be called from disconnect handler
+   */
+  /**
+   * Get winner information for a completed game
+   * @param {number} gameId
+   * @returns {Promise<{winnerName: string, winAmount: number}|null>}
+   */
+  async getGameWinner(gameId) {
+    try {
+      const result = await pool.query(
+        `SELECT 
+          u.display_name as winner_name,
+          gw.win_amount
+         FROM game_winners gw
+         JOIN users u ON u.telegram_id = gw.telegram_id
+         WHERE gw.game_id = $1
+         ORDER BY gw.created_at DESC
+         LIMIT 1`,
+        [gameId]
+      );
+
+      if (result.rows.length > 0) {
+        return {
+          winnerName: result.rows[0].winner_name,
+          winAmount: result.rows[0].win_amount
+        };
+      }
+      return null;
+    } catch (error) {
+      logger.error(`Error getting winner for game ${gameId}:`, error);
+      return null;
+    }
+  }
+
+  /**
+   * Pause game when all players disconnect
+   * Stops number calling but keeps game state
+   * @param {number} gameId
+   */
+  async pauseGame(gameId) {
+    const game = this.activeGames.get(gameId);
+    if (!game) return;
+
+    // Only pause if game is actively playing
+    if (game.status !== GAME_STATES.PLAYING) {
+      return;
+    }
+
+    // Already paused
+    if (game.paused) {
+      logger.debug(`Game ${gameId} is already paused`);
+      return;
+    }
+
+    logger.logGameEvent('game_paused', gameId, {
+      playerCount: game.playerCount,
+      calledNumbers: game.calledNumbers.length
+    });
+    
+    // Stop number calling timer
+    this._stopTimers(gameId);
+    
+    // Mark game as paused (but keep it in PLAYING state for reconnection)
+    game.paused = true;
+    game.pausedAt = Date.now();
+    this.metrics.gamesPaused++;
+    
+    // Update connection manager
+    this.connectionManager.setGamePaused(gameId, true);
+    
+    // Persist pause state to database
+    try {
+      await db.update(games)
+        .set({ 
+          paused: true,
+          pausedAt: new Date()
+        })
+        .where(eq(games.id, gameId));
+    } catch (error) {
+      logger.error(`Error persisting pause state for game ${gameId}:`, error);
+    }
+    
+    logger.info(`Game ${gameId} paused. Waiting for players to reconnect.`);
+  }
+
+  /**
+   * Resume game when players reconnect
+   * Restarts number calling and cancels any pending timeout
+   * @param {number} gameId
+   */
+  async resumeGame(gameId) {
+    const game = this.activeGames.get(gameId);
+    if (!game) return;
+
+    // Only resume if game was paused
+    if (!game.paused) {
+      return;
+    }
+
+    const pauseDuration = Date.now() - game.pausedAt;
+    logger.logGameEvent('game_resumed', gameId, {
+      pauseDurationMs: pauseDuration,
+      playerCount: game.playerCount
+    });
+    
+    // Cancel any pending house win timeout
+    const pauseTimeout = this.pauseTimeouts.get(gameId);
+    if (pauseTimeout) {
+      clearTimeout(pauseTimeout);
+      this.pauseTimeouts.delete(gameId);
+      logger.debug(`Cancelled house win timeout for game ${gameId}`);
+    }
+    
+    // Clear pause state
+    game.paused = false;
+    delete game.pausedAt;
+    this.metrics.gamesResumed++;
+    
+    // Update connection manager
+    this.connectionManager.setGamePaused(gameId, false);
+    
+    // Persist resume state to database
+    try {
+      await db.update(games)
+        .set({ 
+          paused: false,
+          pausedAt: null
+        })
+        .where(eq(games.id, gameId));
+    } catch (error) {
+      logger.error(`Error persisting resume state for game ${gameId}:`, error);
+    }
+    
+    // Resume number calling
+    this._scheduleNextCall(gameId);
+    
+    logger.info(`Game ${gameId} resumed after ${Math.round(pauseDuration / 1000)}s pause`);
+  }
+
+  /**
+   * End game when all players disconnect and don't reconnect within grace period
+   * House wins - no refunds issued
+   * @param {number} gameId
+   */
+  async endGameHouseWins(gameId) {
+    // Idempotency check - prevent duplicate calls
+    if (this.endingGames.has(gameId)) {
+      logger.debug(`Game ${gameId} is already being ended, skipping duplicate call`);
+      return;
+    }
+
+    const game = this.activeGames.get(gameId);
+    if (!game) {
+      logger.debug(`Game ${gameId} not found, may have already ended`);
+      return;
+    }
+
+    // Check if game is already completed
+    if (game.status === GAME_STATES.COMPLETED || game.status === GAME_STATES.CANCELLED) {
+      logger.debug(`Game ${gameId} already ended with status ${game.status}`);
+      return;
+    }
+
+    // Mark as ending
+    this.endingGames.add(gameId);
+
+    try {
+      // Verify no players are connected
+      const connectedPlayers = this.connectionManager.getGamePlayerCount(gameId);
+      if (connectedPlayers > 0) {
+        logger.debug(`Game ${gameId} has ${connectedPlayers} connected players, not ending`);
+        this.endingGames.delete(gameId);
+        return;
+      }
+
+      this.metrics.houseWins++;
+      this.metrics.gamesCompleted++;
+      this.metrics.totalBetsCollected += game.prizePool;
+      
+      logger.logGameEvent('house_wins', gameId, {
+        prizePool: game.prizePool,
+        playerCount: game.players.size,
+        calledNumbers: game.calledNumbers.length
+      });
+      
+      this._stopTimers(gameId);
+      
+      // Clear any pause timeout
+      const pauseTimeout = this.pauseTimeouts.get(gameId);
+      if (pauseTimeout) {
+        clearTimeout(pauseTimeout);
+        this.pauseTimeouts.delete(gameId);
+      }
+      
+      game.status = GAME_STATES.COMPLETED;
+
+      // NO REFUNDS - House keeps the money
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+
+        // Mark game as completed with house win
+        await client.query(
+          `UPDATE games 
+           SET status = $1, 
+               finished_at = NOW(),
+               notes = 'House win - all players disconnected and did not reconnect within grace period'
+           WHERE id = $2`,
+          [GAME_STATES.COMPLETED, gameId]
+        );
+
+        await client.query('COMMIT');
+        logger.info(`Game ${gameId} ended. House wins ${game.totalPot}. No refunds issued to ${game.players.size} players.`);
+      } catch (error) {
+        await client.query('ROLLBACK');
+        logger.error(`Error ending abandoned game ${gameId}:`, error);
+        throw error;
+      } finally {
+        client.release();
+      }
+
+      // Clean up game from memory
+      this._cleanupGame(gameId);
+    } finally {
+      // Always remove from ending set
+      this.endingGames.delete(gameId);
+    }
+  }
+
+  /**
+   * DEPRECATED - DO NOT USE
+   * This function is kept for reference but should NOT be called
+   * Players disconnecting should NEVER trigger refunds
+   */
+  async endGameAllPlayersLeft(gameId) {
+    logger.warn(`endGameAllPlayersLeft called for game ${gameId} - THIS FUNCTION IS DEPRECATED`);
+    logger.warn(`Use endGameHouseWins instead - no refunds should be issued`);
+    return; // Do nothing
+  }
+
   // ═══════════════════════════════════════════════════════════════════
   // HELPERS
   // ═══════════════════════════════════════════════════════════════════
@@ -1161,6 +1469,12 @@ class BingoEngine {
       clearInterval(countdownTimer);
       this.countdownTimers.delete(gameId);
     }
+
+    const pauseTimeout = this.pauseTimeouts.get(gameId);
+    if (pauseTimeout) {
+      clearTimeout(pauseTimeout);
+      this.pauseTimeouts.delete(gameId);
+    }
   }
 
   /**
@@ -1174,13 +1488,23 @@ class BingoEngine {
 
   /**
    * Clean up all finished games older than 5 minutes
+   * Also cleanup abandoned paused games older than 10 minutes
    */
   cleanupFinished() {
     const now = Date.now();
     for (const [gameId, game] of this.activeGames) {
+      // Cleanup completed/cancelled games older than 5 minutes
       if ([GAME_STATES.COMPLETED, GAME_STATES.CANCELLED].includes(game.status)) {
         if (now - game.createdAt > 300000) {
           this._cleanupGame(gameId);
+        }
+      }
+      // Cleanup abandoned paused games older than 10 minutes
+      else if (game.paused && game.pausedAt) {
+        const pauseDuration = now - game.pausedAt;
+        if (pauseDuration > 600000) { // 10 minutes
+          logger.warn(`Cleaning up abandoned paused game ${gameId} (paused for ${Math.round(pauseDuration / 1000)}s)`);
+          this.endGameHouseWins(gameId);
         }
       }
     }
@@ -1234,6 +1558,55 @@ class BingoEngine {
   }
 
   /**
+   * Get game state (public method for checking game status)
+   */
+  async getGameState(gameId) {
+    const game = this.activeGames.get(gameId);
+    if (!game) return null;
+    
+    return {
+      id: gameId,
+      status: game.status,
+      playerCount: game.playerCount,
+      calledNumbers: game.calledNumbers,
+    };
+  }
+
+  /**
+   * Get engine stats for monitoring
+   */
+  getStats() {
+    return {
+      activeGames: this.activeGames.size,
+      metrics: { ...this.metrics },
+      memory: {
+        activeGames: this.activeGames.size,
+        callTimers: this.callTimers.size,
+        countdownTimers: this.countdownTimers.size,
+        pauseTimeouts: this.pauseTimeouts.size,
+        endingGames: this.endingGames.size
+      }
+    };
+  }
+
+  /**
+   * Reset metrics (for testing or periodic reset)
+   */
+  resetMetrics() {
+    this.metrics = {
+      gamesCreated: 0,
+      gamesCompleted: 0,
+      gamesCancelled: 0,
+      gamesPaused: 0,
+      gamesResumed: 0,
+      houseWins: 0,
+      playerWins: 0,
+      totalBetsCollected: 0,
+      totalPayouts: 0
+    };
+  }
+
+  /**
    * Destroy engine (for shutdown)
    */
   destroy() {
@@ -1242,6 +1615,33 @@ class BingoEngine {
       this._stopTimers(gameId);
     }
     this.activeGames.clear();
+  }
+
+  /**
+   * Retry database operations with exponential backoff
+   * @param {Function} operation - Async function to retry
+   * @param {string} operationName - Name for logging
+   * @param {number} maxRetries - Maximum retry attempts (default: 3)
+   */
+  async _retryDbOperation(operation, operationName, maxRetries = 3) {
+    let lastError;
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        await operation();
+        if (attempt > 1) {
+          logger.info(`${operationName} succeeded on attempt ${attempt}`);
+        }
+        return;
+      } catch (err) {
+        lastError = err;
+        if (attempt < maxRetries) {
+          const delayMs = Math.min(1000 * Math.pow(2, attempt - 1), 5000); // Max 5s
+          logger.warn(`Error ${operationName} (attempt ${attempt}/${maxRetries}), retrying in ${delayMs}ms:`, err.message);
+          await new Promise(resolve => setTimeout(resolve, delayMs));
+        }
+      }
+    }
+    logger.error(`Error ${operationName} after ${maxRetries} attempts:`, lastError);
   }
 }
 

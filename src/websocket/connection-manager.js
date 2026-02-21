@@ -15,6 +15,8 @@ class ConnectionManager {
     this.ipConnections = new Map();
     // gameId → Set<socketId>
     this.gameRooms = new Map();
+    // gameId → pause state
+    this.gamePauseState = new Map();
 
     this.totalConnections = 0;
   }
@@ -92,7 +94,10 @@ class ConnectionManager {
       const room = this.gameRooms.get(meta.gameId);
       if (room) {
         room.delete(socketId);
-        if (room.size === 0) this.gameRooms.delete(meta.gameId);
+        if (room.size === 0) {
+          this.gameRooms.delete(meta.gameId);
+          this.gamePauseState.delete(meta.gameId);
+        }
       }
     }
 
@@ -141,6 +146,31 @@ class ConnectionManager {
   }
 
   /**
+   * Mark game as paused
+   */
+  setGamePaused(gameId, paused) {
+    this.gamePauseState.set(gameId, {
+      paused,
+      timestamp: Date.now()
+    });
+  }
+
+  /**
+   * Check if game is paused
+   */
+  isGamePaused(gameId) {
+    const state = this.gamePauseState.get(gameId);
+    return state ? state.paused : false;
+  }
+
+  /**
+   * Get game pause state
+   */
+  getGamePauseState(gameId) {
+    return this.gamePauseState.get(gameId) || null;
+  }
+
+  /**
    * Leave current game room
    */
   leaveGame(socketId) {
@@ -150,7 +180,10 @@ class ConnectionManager {
     const room = this.gameRooms.get(meta.gameId);
     if (room) {
       room.delete(socketId);
-      if (room.size === 0) this.gameRooms.delete(meta.gameId);
+      if (room.size === 0) {
+        this.gameRooms.delete(meta.gameId);
+        this.gamePauseState.delete(meta.gameId);
+      }
     }
 
     meta.gameId = null;

@@ -1,3 +1,12 @@
+/**
+ * DEPRECATED: This service is for legacy single-player bingo games
+ * 
+ * For multiplayer room-based games, use src/services/bingo-engine.js instead.
+ * This service is kept for backward compatibility only.
+ * 
+ * DO NOT ADD NEW FEATURES HERE - use BingoEngine instead.
+ */
+
 const { eq, sql } = require('drizzle-orm');
 const { db, pool } = require('../database');
 const { users } = require('../database/schema');
