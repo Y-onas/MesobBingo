@@ -1,5 +1,6 @@
 const crypto = require('crypto');
 const { db, pool } = require('../database');
+const { executeDbOperation } = require('../database/db-operations');
 const { games, boards, gamePlayers, calledNumbers, gameRooms, users } = require('../database/schema');
 const { eq, sql, and, desc, isNull } = require('drizzle-orm');
 const { generateBingoBoard, hashBoard, validateBingoWin, getBingoLetter } = require('../utils/helpers');
@@ -478,22 +479,23 @@ class BingoEngine {
     game.calledSet.add(number);
 
     try {
-      // Persist to DB with retry logic
-      await this._retryDbOperation(async () => {
-        await db.insert(calledNumbers).values({
-          gameId,
-          number,
-          callOrder: game.calledNumbers.length,
-        });
-      }, 'persisting called number');
-
-      // Update total calls in game with retry logic
-      await this._retryDbOperation(async () => {
-        await db.update(games)
-          .set({ totalCalls: game.calledNumbers.length })
-          .where(eq(games.id, gameId));
-      }, 'updating total calls');
-
+      // Persist to DB with robust retry logic and circuit breaker
+      // CRITICAL: This must succeed or we rollback in-memory state
+      await executeDbOperation(
+        async () => {
+          await db.insert(calledNumbers).values({
+            gameId,
+            number,
+            callOrder: game.calledNumbers.length,
+          });
+        },
+        {
+          operationName: `persisting called number ${number} for game ${gameId}`,
+          maxRetries: 3,
+          retryDelay: 1000,
+          critical: true // Throw error if fails - we need to rollback
+        }
+      );
     } catch (dbError) {
       // CRITICAL: DB write failed after retries - rollback in-memory state
       logger.error(`CRITICAL: Failed to persist number ${number} for game ${gameId} after retries. Rolling back in-memory state.`, dbError);
@@ -522,6 +524,22 @@ class BingoEngine {
       
       return; // Don't broadcast the number or schedule next call
     }
+
+    // Update total calls in game with retry logic (non-critical, outside try/catch)
+    // If this fails, it won't affect game flow - totalCalls can be synced later
+    await executeDbOperation(
+      async () => {
+        await db.update(games)
+          .set({ totalCalls: game.calledNumbers.length })
+          .where(eq(games.id, gameId));
+      },
+      {
+        operationName: `updating total calls for game ${gameId}`,
+        maxRetries: 3,
+        retryDelay: 1000,
+        critical: false // Non-critical - can be synced later
+      }
+    );
 
     const letter = getBingoLetter(number);
 
@@ -1329,17 +1347,23 @@ class BingoEngine {
     // Update connection manager
     this.connectionManager.setGamePaused(gameId, true);
     
-    // Persist pause state to database
-    try {
-      await db.update(games)
-        .set({ 
-          paused: true,
-          pausedAt: new Date()
-        })
-        .where(eq(games.id, gameId));
-    } catch (error) {
-      logger.error(`Error persisting pause state for game ${gameId}:`, error);
-    }
+    // Persist pause state to database with robust retry and circuit breaker
+    await executeDbOperation(
+      async () => {
+        await db.update(games)
+          .set({ 
+            paused: true,
+            pausedAt: new Date()
+          })
+          .where(eq(games.id, gameId));
+      },
+      {
+        operationName: `persisting pause state for game ${gameId}`,
+        maxRetries: 3,
+        retryDelay: 1000,
+        critical: false // Don't crash if DB write fails - game is paused in memory
+      }
+    );
     
     logger.info(`Game ${gameId} paused. Waiting for players to reconnect.`);
   }
@@ -1380,17 +1404,23 @@ class BingoEngine {
     // Update connection manager
     this.connectionManager.setGamePaused(gameId, false);
     
-    // Persist resume state to database
-    try {
-      await db.update(games)
-        .set({ 
-          paused: false,
-          pausedAt: null
-        })
-        .where(eq(games.id, gameId));
-    } catch (error) {
-      logger.error(`Error persisting resume state for game ${gameId}:`, error);
-    }
+    // Persist resume state to database with retry logic (consistent with pauseGame)
+    await executeDbOperation(
+      async () => {
+        await db.update(games)
+          .set({ 
+            paused: false,
+            pausedAt: null
+          })
+          .where(eq(games.id, gameId));
+      },
+      {
+        operationName: `persisting resume state for game ${gameId}`,
+        maxRetries: 3,
+        retryDelay: 1000,
+        critical: false // Non-critical - game is already resumed in memory
+      }
+    );
     
     // Resume number calling
     this._scheduleNextCall(gameId);
@@ -1676,34 +1706,10 @@ class BingoEngine {
     this.activeGames.clear();
   }
 
-  /**
-   * Retry database operations with exponential backoff
-   * @param {Function} operation - Async function to retry
-   * @param {string} operationName - Name for logging
-   * @param {number} maxRetries - Maximum retry attempts (default: 3)
-   * @throws {Error} Throws the last error if all retries fail
-   */
-  async _retryDbOperation(operation, operationName, maxRetries = 3) {
-    let lastError;
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
-      try {
-        await operation();
-        if (attempt > 1) {
-          logger.info(`${operationName} succeeded on attempt ${attempt}`);
-        }
-        return;
-      } catch (err) {
-        lastError = err;
-        if (attempt < maxRetries) {
-          const delayMs = Math.min(1000 * Math.pow(2, attempt - 1), 5000); // Max 5s
-          logger.warn(`Error ${operationName} (attempt ${attempt}/${maxRetries}), retrying in ${delayMs}ms:`, err.message);
-          await new Promise(resolve => setTimeout(resolve, delayMs));
-        }
-      }
-    }
-    logger.error(`Error ${operationName} after ${maxRetries} attempts:`, lastError);
-    throw lastError; // Propagate error to caller
-  }
+  // DEPRECATED: _retryDbOperation has been replaced by executeDbOperation from db-operations.js
+  // This method is no longer used anywhere in the codebase. All retry logic now uses
+  // the centralized executeDbOperation which includes circuit breaker support.
+  // Kept for reference only - DO NOT USE
 }
 
 module.exports = { BingoEngine };
