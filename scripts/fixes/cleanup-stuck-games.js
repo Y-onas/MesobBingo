@@ -9,6 +9,9 @@ async function cleanupStuckGames() {
     client = await pool.connect();
     
     // Find games that have been "playing" for more than 2 hours (excluding paused games)
+    // NOTE: Age calculation uses created_at and doesn't account for cumulative pause time.
+    // A game paused for 90 minutes then resumed will be cleaned up if created_at > 2 hours ago,
+    // even if actual active play time is less. Consider adding total_paused_seconds column.
     const stuckGames = await client.query(`
       SELECT id, status, total_calls, created_at, 
              EXTRACT(EPOCH FROM (NOW() - created_at))/3600 as hours_old

@@ -857,6 +857,7 @@ class BingoEngine {
 
     } catch (error) {
       logger.error('Error awarding win to remaining player:', error);
+      throw error; // Let the caller manage ROLLBACK
     }
   }
 

@@ -60,17 +60,16 @@ const GamePlayScreen = ({
   });
 
   const toggleVoice = useCallback(() => {
-    if (!speechSupported) {
-      alert('Speech synthesis is not supported in this browser/environment');
-      return;
-    }
-
     const newValue = !voiceEnabled;
-    console.log('Toggle voice clicked - Current:', voiceEnabled, 'New:', newValue);
+    if (import.meta.env.DEV) {
+      console.log('Toggle voice clicked - Current:', voiceEnabled, 'New:', newValue);
+    }
     
     // Update state via parent first so UI responds immediately
     onVoiceToggle(newValue);
-    console.log('Called onVoiceToggle with:', newValue);
+    if (import.meta.env.DEV) {
+      console.log('Called onVoiceToggle with:', newValue);
+    }
     
     if (voiceEnabled) {
       // Turning off - cancel any ongoing speech
