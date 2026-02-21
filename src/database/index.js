@@ -11,7 +11,19 @@ if (!DATABASE_URL) {
 }
 
 // Extract direct connection URL (remove -pooler for better performance)
-const directDatabaseUrl = DATABASE_URL.replace('-pooler.', '.');
+// Parse URL properly to avoid corrupting passwords/database names containing '-pooler'
+const directDatabaseUrl = (() => {
+  try {
+    const url = new URL(DATABASE_URL);
+    // Only replace -pooler in hostname to avoid corrupting other URL parts
+    url.hostname = url.hostname.replace('-pooler.', '.');
+    return url.toString();
+  } catch (error) {
+    // Fallback to simple replace if URL parsing fails
+    logger.warn('Could not parse DATABASE_URL, using simple string replacement');
+    return DATABASE_URL.replace('-pooler.', '.');
+  }
+})();
 const useDirectConnection = !DATABASE_URL.includes('-pooler');
 
 if (!useDirectConnection) {
@@ -23,7 +35,7 @@ if (!useDirectConnection) {
 const sql = neon(DATABASE_URL, {
   fetchConnectionCache: true,
   fetchOptions: {
-    timeout: 15000, // 15 second timeout
+    signal: AbortSignal.timeout(15000), // 15 second timeout using AbortSignal
   }
 });
 const db = drizzle(sql, { schema });
@@ -41,7 +53,13 @@ const poolConfig = {
   keepAlive: true,
   keepAliveInitialDelayMillis: 10000,
   ssl: { 
-    rejectUnauthorized: false // Neon requires SSL but with self-signed certs
+    // SECURITY NOTE: rejectUnauthorized: false disables SSL certificate validation
+    // This is required for Neon's connection pooler which may use self-signed certificates
+    // SECURITY TRADE-OFF: This bypasses Man-in-the-Middle (MITM) attack protection
+    // The connection is still encrypted, but the server's identity is not verified
+    // This is acceptable for Neon's managed infrastructure but understand the risk
+    // For production with direct connection to trusted endpoints, consider setting to true
+    rejectUnauthorized: false
   },
 };
 
@@ -94,6 +112,8 @@ const checkDbHealth = async (retries = 3) => {
 };
 
 // Graceful shutdown handler
+// NOTE: This is called by the main application's shutdown orchestrator (src/index.js)
+// Do NOT register signal handlers here - they are handled centrally to ensure proper shutdown order
 const closePool = async () => {
   try {
     await pool.end();
@@ -102,10 +122,6 @@ const closePool = async () => {
     logger.error('Error closing database pool:', err);
   }
 };
-
-// Register shutdown handlers
-process.on('SIGTERM', closePool);
-process.on('SIGINT', closePool);
 
 logger.info('Neon database connection configured', {
   driver: 'HTTP + Pool',

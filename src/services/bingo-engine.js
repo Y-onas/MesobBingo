@@ -1,6 +1,6 @@
 const crypto = require('crypto');
 const { db, pool } = require('../database');
-const { executeDbOperation, safeQuery } = require('../database/db-operations');
+const { executeDbOperation } = require('../database/db-operations');
 const { games, boards, gamePlayers, calledNumbers, gameRooms, users } = require('../database/schema');
 const { eq, sql, and, desc, isNull } = require('drizzle-orm');
 const { generateBingoBoard, hashBoard, validateBingoWin, getBingoLetter } = require('../utils/helpers');
@@ -1403,17 +1403,23 @@ class BingoEngine {
     // Update connection manager
     this.connectionManager.setGamePaused(gameId, false);
     
-    // Persist resume state to database
-    try {
-      await db.update(games)
-        .set({ 
-          paused: false,
-          pausedAt: null
-        })
-        .where(eq(games.id, gameId));
-    } catch (error) {
-      logger.error(`Error persisting resume state for game ${gameId}:`, error);
-    }
+    // Persist resume state to database with retry logic (consistent with pauseGame)
+    await executeDbOperation(
+      async () => {
+        await db.update(games)
+          .set({ 
+            paused: false,
+            pausedAt: null
+          })
+          .where(eq(games.id, gameId));
+      },
+      {
+        operationName: `persisting resume state for game ${gameId}`,
+        maxRetries: 3,
+        retryDelay: 1000,
+        critical: false // Non-critical - game is already resumed in memory
+      }
+    );
     
     // Resume number calling
     this._scheduleNextCall(gameId);
@@ -1699,34 +1705,10 @@ class BingoEngine {
     this.activeGames.clear();
   }
 
-  /**
-   * Retry database operations with exponential backoff
-   * @param {Function} operation - Async function to retry
-   * @param {string} operationName - Name for logging
-   * @param {number} maxRetries - Maximum retry attempts (default: 3)
-   * @throws {Error} Throws the last error if all retries fail
-   */
-  async _retryDbOperation(operation, operationName, maxRetries = 3) {
-    let lastError;
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
-      try {
-        await operation();
-        if (attempt > 1) {
-          logger.info(`${operationName} succeeded on attempt ${attempt}`);
-        }
-        return;
-      } catch (err) {
-        lastError = err;
-        if (attempt < maxRetries) {
-          const delayMs = Math.min(1000 * Math.pow(2, attempt - 1), 5000); // Max 5s
-          logger.warn(`Error ${operationName} (attempt ${attempt}/${maxRetries}), retrying in ${delayMs}ms:`, err.message);
-          await new Promise(resolve => setTimeout(resolve, delayMs));
-        }
-      }
-    }
-    logger.error(`Error ${operationName} after ${maxRetries} attempts:`, lastError);
-    throw lastError; // Propagate error to caller
-  }
+  // DEPRECATED: _retryDbOperation has been replaced by executeDbOperation from db-operations.js
+  // This method is no longer used anywhere in the codebase. All retry logic now uses
+  // the centralized executeDbOperation which includes circuit breaker support.
+  // Kept for reference only - DO NOT USE
 }
 
 module.exports = { BingoEngine };

@@ -84,11 +84,16 @@ async function testDbOperations() {
       console.log(`   ✗ Operation failed after ${attemptCount} attempts`);
     }
     
-    // Test 3: Non-critical failure
-    console.log('\n3. Testing non-critical failure handling...');
+    // Test 3: Non-critical failure with retryable error (tests retry exhaustion)
+    console.log('\n3. Testing non-critical failure handling with retryable error...');
+    let retryAttempts = 0;
     const fallbackResult = await executeDbOperation(
       async () => {
-        throw new Error('Simulated failure');
+        retryAttempts++;
+        // Use a retryable error to actually test retry logic
+        const error = new Error('connection timeout');
+        error.code = 'ETIMEDOUT';
+        throw error;
       },
       { 
         operationName: 'non-critical test',
@@ -98,22 +103,36 @@ async function testDbOperations() {
         fallback: () => ({ fallback: true })
       }
     );
-    console.log(`   ✓ Fallback returned: ${JSON.stringify(fallbackResult)}`);
+    console.log(`   ✓ Fallback returned after ${retryAttempts} retry attempts: ${JSON.stringify(fallbackResult)}`);
     
-    // Test 4: Circuit breaker
-    console.log('\n4. Testing circuit breaker...');
+    // Test 4: Circuit breaker accumulates failures across operations
+    console.log('\n4. Testing circuit breaker with repeated failures...');
     circuitBreaker.reset();
     
-    // Simulate repeated failures on the SAME operation type
-    let circuitBreakerTriggered = false;
-    for (let i = 0; i < 6; i++) {
+    let circuitBreakerOpened = false;
+    let failureCount = 0;
+    
+    // Simulate repeated failures - circuit breaker tracks across all operations
+    for (let i = 0; i < 7; i++) {
       try {
-        await circuitBreaker.execute(async () => {
-          throw new Error('Simulated persistent failure');
-        });
+        await executeDbOperation(
+          async () => {
+            throw new Error('Simulated persistent DB failure');
+          },
+          {
+            operationName: 'circuit breaker test',
+            maxRetries: 1,
+            retryDelay: 10,
+            critical: true, // Must be critical to propagate error to circuit breaker
+            useCircuitBreaker: true
+          }
+        );
       } catch (error) {
+        failureCount++;
+        // Check if circuit breaker opened
         if (error.message === 'Circuit breaker is OPEN') {
-          circuitBreakerTriggered = true;
+          circuitBreakerOpened = true;
+          console.log(`   - Circuit breaker opened after ${failureCount} failures`);
           break;
         }
       }
@@ -122,11 +141,11 @@ async function testDbOperations() {
     console.log(`   - Circuit breaker state: ${circuitBreaker.state}`);
     console.log(`   - Failure count: ${circuitBreaker.failureCount}`);
     
-    if (circuitBreaker.state === 'OPEN' || circuitBreakerTriggered) {
-      console.log('   ✓ Circuit breaker opened after repeated failures');
+    if (circuitBreaker.state === 'OPEN' || circuitBreakerOpened) {
+      console.log('   ✓ Circuit breaker correctly opened after repeated failures');
     } else {
-      console.log('   ℹ Circuit breaker test: Breaker works per-operation context');
-      console.log('   ℹ In production, repeated failures on same DB operation will trigger it');
+      console.log('   ✗ Circuit breaker should have opened after repeated failures');
+      return false;
     }
     
     // Reset for other tests
@@ -147,14 +166,16 @@ async function testGamePauseScenario() {
     const { games } = require('../../src/database/schema');
     const { eq } = require('drizzle-orm');
     
-    // Find an existing game or create test scenario
-    console.log('1. Simulating game pause database write...');
+    // Test 1: Non-critical operation with fallback (should succeed with fallback)
+    console.log('1. Testing non-critical pause operation with fallback...');
     
     const testGameId = 999999; // Use non-existent ID for test
+    let operationAttempted = false;
     
-    await executeDbOperation(
+    const result = await executeDbOperation(
       async () => {
-        // This will fail because game doesn't exist, but tests the operation wrapper
+        operationAttempted = true;
+        // This will fail because game doesn't exist
         await db.update(games)
           .set({ 
             paused: true,
@@ -164,18 +185,154 @@ async function testGamePauseScenario() {
       },
       {
         operationName: `pause game ${testGameId}`,
-        maxRetries: 3,
-        retryDelay: 500,
-        critical: false
+        maxRetries: 2,
+        retryDelay: 100,
+        critical: false,
+        fallback: () => ({ fallbackUsed: true })
       }
     );
     
-    console.log('   ✓ Pause operation completed (with retry handling)');
+    if (!operationAttempted) {
+      console.log('   ✗ Operation was never attempted');
+      return false;
+    }
+    
+    if (result && result.fallbackUsed) {
+      console.log('   ✓ Non-critical operation used fallback as expected');
+    } else {
+      console.log('   ✗ Expected fallback to be used');
+      return false;
+    }
+    
+    // Test 2: Critical operation (should throw)
+    console.log('\n2. Testing critical pause operation (should throw)...');
+    
+    let errorThrown = false;
+    try {
+      await executeDbOperation(
+        async () => {
+          await db.update(games)
+            .set({ paused: true, pausedAt: new Date() })
+            .where(eq(games.id, testGameId));
+        },
+        {
+          operationName: `critical pause game ${testGameId}`,
+          maxRetries: 1,
+          retryDelay: 100,
+          critical: true // Should throw error
+        }
+      );
+    } catch (error) {
+      errorThrown = true;
+      console.log('   ✓ Critical operation threw error as expected');
+    }
+    
+    if (!errorThrown) {
+      console.log('   ✗ Critical operation should have thrown an error');
+      return false;
+    }
     
     return true;
   } catch (error) {
-    console.log(`   ℹ Test completed with expected behavior: ${error.message}`);
+    console.error('   ✗ Unexpected test error:', error.message);
+    return false;
+  }
+}
+
+async function testTransactionSafety() {
+  console.log('\n=== Testing Transaction Safety ===\n');
+  
+  try {
+    const { safeTransaction } = require('../../src/database/db-operations');
+    
+    // Test 1: Successful transaction
+    console.log('1. Testing successful transaction...');
+    const result1 = await safeTransaction(
+      async (client) => {
+        const res = await client.query('SELECT 1 as test');
+        return res.rows[0];
+      },
+      { name: 'test transaction' }
+    );
+    
+    if (result1 && result1.test === 1) {
+      console.log('   ✓ Transaction completed successfully');
+    } else {
+      console.log('   ✗ Transaction did not return expected result');
+      return false;
+    }
+    
+    // Test 2: Transaction with error (should rollback)
+    console.log('\n2. Testing transaction rollback on error...');
+    let rollbackWorked = false;
+    
+    try {
+      await safeTransaction(
+        async (client) => {
+          await client.query('SELECT 1');
+          throw new Error('Simulated transaction error');
+        },
+        { 
+          name: 'failing transaction',
+          critical: false,
+          fallback: () => ({ rolledBack: true })
+        }
+      );
+    } catch (error) {
+      // Should not reach here with critical: false
+    }
+    
+    // With critical: false, should get fallback
+    const result2 = await safeTransaction(
+      async (client) => {
+        throw new Error('Simulated error');
+      },
+      { 
+        name: 'non-critical transaction',
+        critical: false,
+        fallback: () => ({ rolledBack: true })
+      }
+    );
+    
+    if (result2 && result2.rolledBack) {
+      console.log('   ✓ Transaction rollback handled correctly with fallback');
+      rollbackWorked = true;
+    }
+    
+    if (!rollbackWorked) {
+      console.log('   ✗ Transaction rollback did not work as expected');
+      return false;
+    }
+    
+    // Test 3: Verify maxRetries is 1 by default (safety check)
+    console.log('\n3. Verifying transaction retry safety (maxRetries=1)...');
+    let attemptCount = 0;
+    
+    try {
+      await safeTransaction(
+        async (client) => {
+          attemptCount++;
+          throw new Error('Force retry');
+        },
+        { 
+          name: 'retry count test',
+          critical: true
+        }
+      );
+    } catch (error) {
+      // Expected to fail
+    }
+    
+    if (attemptCount === 1) {
+      console.log('   ✓ Transaction uses maxRetries=1 by default (safe for non-idempotent ops)');
+    } else {
+      console.log(`   ⚠ Transaction attempted ${attemptCount} times (expected 1 for safety)`);
+    }
+    
     return true;
+  } catch (error) {
+    console.error('   ✗ Transaction safety test failed:', error.message);
+    return false;
   }
 }
 
@@ -187,13 +344,15 @@ async function runAllTests() {
   const results = {
     connectionPool: false,
     dbOperations: false,
-    gamePause: false
+    gamePause: false,
+    transactionSafety: false
   };
   
   try {
     results.connectionPool = await testConnectionPool();
     results.dbOperations = await testDbOperations();
     results.gamePause = await testGamePauseScenario();
+    results.transactionSafety = await testTransactionSafety();
   } catch (error) {
     console.error('\n✗ Test suite error:', error);
   }
@@ -206,6 +365,7 @@ async function runAllTests() {
   console.log(`Connection Pool Tests:    ${results.connectionPool ? '✓ PASSED' : '✗ FAILED'}`);
   console.log(`DB Operations Tests:      ${results.dbOperations ? '✓ PASSED' : '✗ FAILED'}`);
   console.log(`Game Pause Scenario:      ${results.gamePause ? '✓ PASSED' : '✗ FAILED'}`);
+  console.log(`Transaction Safety:       ${results.transactionSafety ? '✓ PASSED' : '✗ FAILED'}`);
   
   const allPassed = Object.values(results).every(r => r);
   console.log(`\nOverall: ${allPassed ? '✓ ALL TESTS PASSED' : '✗ SOME TESTS FAILED'}`);

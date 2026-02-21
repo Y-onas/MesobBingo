@@ -1,3 +1,6 @@
+// IMPORTANT: This module imports from ./index but index.js does NOT import from here.
+// If index.js ever imports from db-operations.js, it will create a circular dependency
+// causing Node.js to deliver a partially-initialized module. Keep this one-way dependency.
 const { db, pool } = require('./index');
 const logger = require('../utils/logger');
 
