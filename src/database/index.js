@@ -24,7 +24,14 @@ const directDatabaseUrl = (() => {
     return DATABASE_URL.replace('-pooler.', '.');
   }
 })();
-const useDirectConnection = !DATABASE_URL.includes('-pooler');
+const useDirectConnection = (() => {
+  try {
+    const url = new URL(DATABASE_URL);
+    return !url.hostname.includes('-pooler');
+  } catch {
+    return !DATABASE_URL.includes('-pooler');
+  }
+})();
 
 if (!useDirectConnection) {
   logger.warn('⚠️  Using pooler connection. For better performance, use direct connection URL.');
@@ -88,6 +95,7 @@ pool.on('remove', (client) => {
 const checkDbHealth = async (retries = 3) => {
   let client;
   for (let attempt = 1; attempt <= retries; attempt++) {
+    client = null; // Reset client reference for each retry attempt
     try {
       client = await pool.connect();
       const result = await client.query('SELECT NOW() as time, version() as version');

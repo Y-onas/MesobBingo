@@ -3,7 +3,6 @@
  */
 const { pool, checkDbHealth, closePool } = require('../../src/database');
 const { executeDbOperation, circuitBreaker } = require('../../src/database/db-operations');
-const logger = require('../../src/utils/logger');
 
 async function testConnectionPool() {
   console.log('\n=== Testing Connection Pool ===\n');
@@ -165,10 +164,6 @@ async function testGamePauseScenario() {
   console.log('\n=== Testing Game Pause Scenario ===\n');
   
   try {
-    const { db } = require('../../src/database');
-    const { games } = require('../../src/database/schema');
-    const { eq } = require('drizzle-orm');
-    
     // Test 1: Non-critical operation with fallback (should succeed with fallback)
     console.log('1. Testing non-critical pause operation with fallback...');
     
@@ -309,6 +304,7 @@ async function testTransactionSafety() {
       console.log('   ✓ Transaction uses maxRetries=1 by default (safe for non-idempotent ops)');
     } else {
       console.log(`   ⚠ Transaction attempted ${attemptCount} times (expected 1 for safety)`);
+      return false; // Fail the test if safety condition is violated
     }
     
     return true;
