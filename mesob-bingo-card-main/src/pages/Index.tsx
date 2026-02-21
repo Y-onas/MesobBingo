@@ -71,7 +71,9 @@ const Index = () => {
       [SOCKET_EVENTS.PLAYER_JOINED]: (data: any) => dispatch({ type: 'PLAYER_JOINED', data }),
       [SOCKET_EVENTS.PLAYER_LEFT]: (data: any) => dispatch({ type: 'PLAYER_LEFT', data }),
       [SOCKET_EVENTS.BALANCE_UPDATE]: (data: any) => {
-        console.log('BALANCE_UPDATE received:', data);
+        if (import.meta.env.DEV) {
+          console.log('BALANCE_UPDATE received:', data);
+        }
         dispatch({ type: 'BALANCE_UPDATE', data });
       },
       [SOCKET_EVENTS.FORCE_LEAVE_GAME]: (data: any) => {

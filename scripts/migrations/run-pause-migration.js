@@ -9,9 +9,10 @@ const fs = require('fs');
 const path = require('path');
 
 async function runMigration() {
-  const client = await pool.connect();
-  
+  let client;
   try {
+    client = await pool.connect();
+    
     logger.info('Starting pause fields migration...');
     
     // Read the migration SQL file
@@ -28,10 +29,23 @@ async function runMigration() {
     
     const { rows } = await client.query(checkQuery);
     
-    if (rows.length > 0) {
-      logger.info('Pause fields already exist. Skipping migration.');
-      logger.info(`Existing columns: ${rows.map(r => r.column_name).join(', ')}`);
+    const existingColumns = rows.map(r => r.column_name);
+    const expectedColumns = ['paused', 'paused_at', 'notes'];
+    const allExist = expectedColumns.every(c => existingColumns.includes(c));
+    
+    if (allExist) {
+      logger.info('All pause fields already exist. Skipping migration.');
+      logger.info(`Existing columns: ${existingColumns.join(', ')}`);
       return;
+    }
+    
+    if (existingColumns.length > 0) {
+      logger.warn(`⚠️  Partial migration detected!`);
+      logger.warn(`   Existing columns: ${existingColumns.join(', ')}`);
+      logger.warn(`   Missing columns: ${expectedColumns.filter(c => !existingColumns.includes(c)).join(', ')}`);
+      logger.warn(`   This indicates a previous migration failed partway through.`);
+      logger.warn(`   Manual intervention may be required to fix the schema.`);
+      throw new Error('Partial migration state detected. Cannot proceed safely.');
     }
     
     // Run the migration
@@ -60,11 +74,15 @@ async function runMigration() {
     });
     
   } catch (error) {
-    await client.query('ROLLBACK');
+    if (client) {
+      await client.query('ROLLBACK');
+    }
     logger.error('❌ Migration failed:', error);
     throw error;
   } finally {
-    client.release();
+    if (client) {
+      client.release();
+    }
     await pool.end();
   }
 }

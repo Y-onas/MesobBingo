@@ -66,9 +66,9 @@ logger.logMetric = (metric, value, tags = {}) => {
 
 logger.logError = (error, context = {}) => {
   logger.error('Error occurred', {
+    ...context,
     error: error.message,
-    stack: error.stack,
-    ...context
+    stack: error.stack
   });
 };
 

@@ -23,45 +23,59 @@ async function testNeonHttp() {
 
     // Test rapid inserts like the game does
     console.log('Simulating rapid number calls (like the game)...');
-    for (let i = 0; i < 10; i++) {
-      try {
-        const startTime = Date.now();
-        
-        // Insert called number (exactly like bingo-engine does)
-        await db.insert(calledNumbers).values({
-          gameId: testGameId,
-          number: Math.floor(Math.random() * 75) + 1,
-          callOrder: 9000 + i,
-        });
+    let inserted = false;
+    let exitCode = 0;
+    
+    try {
+      for (let i = 0; i < 10; i++) {
+        try {
+          const startTime = Date.now();
+          
+          // Insert called number (exactly like bingo-engine does)
+          await db.insert(calledNumbers).values({
+            gameId: testGameId,
+            number: Math.floor(Math.random() * 75) + 1,
+            callOrder: 9000 + i,
+          });
 
-        // Update game total calls (exactly like bingo-engine does)
-        await db.update(games)
-          .set({ totalCalls: 9000 + i })
-          .where(eq(games.id, testGameId));
+          inserted = true;
 
-        const duration = Date.now() - startTime;
-        console.log(`   ✅ Call ${i + 1}: ${duration}ms`);
-      } catch (err) {
-        console.error(`   ❌ Call ${i + 1} failed:`, err.message);
-        console.error('      Error name:', err.name);
-        console.error('      Error cause:', err.cause);
-        console.error('      Full error:', JSON.stringify(err, null, 2));
+          // Update game total calls (exactly like bingo-engine does)
+          await db.update(games)
+            .set({ totalCalls: 9000 + i })
+            .where(eq(games.id, testGameId));
+
+          const duration = Date.now() - startTime;
+          console.log(`   ✅ Call ${i + 1}: ${duration}ms`);
+        } catch (err) {
+          console.error(`   ❌ Call ${i + 1} failed:`, err.message);
+          console.error('      Error name:', err.name);
+          console.error('      Error cause:', err.cause);
+          console.error('      Full error:', JSON.stringify(err, null, 2));
+        }
+
+        // Wait 2 seconds between calls (like the game)
+        await new Promise(resolve => setTimeout(resolve, 2000));
       }
 
-      // Wait 2 seconds between calls (like the game)
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      console.log('✅ Test complete');
+    } catch (error) {
+      console.error('\n❌ Test failed:', error);
+      exitCode = 1;
+    } finally {
+      if (inserted) {
+        // Clean up test data
+        console.log('\nCleaning up test data...');
+        await sql`DELETE FROM called_numbers WHERE call_order >= 9000`;
+      }
     }
-
-    // Clean up test data
-    console.log('\nCleaning up test data...');
-    await sql`DELETE FROM called_numbers WHERE call_order >= 9000`;
-    console.log('✅ Test complete');
 
   } catch (error) {
     console.error('\n❌ Test failed:', error);
+    exitCode = 1;
   }
 
-  process.exit(0);
+  process.exit(exitCode);
 }
 
 testNeonHttp();

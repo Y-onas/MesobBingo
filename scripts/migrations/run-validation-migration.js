@@ -24,8 +24,10 @@ async function runMigration() {
   let exitCode = 0;
   console.log('🔄 Running validation enhancements migration...\n');
 
-  const client = await pool.connect();
+  let client;
   try {
+    client = await pool.connect();
+    
     // Read migration file
     const migrationPath = path.resolve(
       __dirname,
@@ -53,7 +55,9 @@ async function runMigration() {
     console.error('❌ Migration failed:', error);
     exitCode = 1;
   } finally {
-    client.release();
+    if (client) {
+      client.release();
+    }
     await pool.end();
   }
 

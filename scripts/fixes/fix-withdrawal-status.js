@@ -27,8 +27,10 @@ async function fixWithdrawalStatus() {
 
   console.log('🔄 Fixing withdrawal status from "completed" to "approved"...\n');
 
-  const client = await pool.connect();
+  let client;
   try {
+    client = await pool.connect();
+    
     // Check how many records need updating
     const checkResult = await client.query(
       `SELECT COUNT(*) as count FROM withdrawals WHERE status = 'completed'`
@@ -56,7 +58,9 @@ async function fixWithdrawalStatus() {
     console.error('❌ Migration failed:', error);
     process.exit(1);
   } finally {
-    client.release();
+    if (client) {
+      client.release();
+    }
     await pool.end();
   }
 }

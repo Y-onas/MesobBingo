@@ -1,11 +1,14 @@
+import React from "react";
 import { Volume2, VolumeX } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useState, useEffect } from "react";
+import { useSpeechSynthesis, unlockSpeechSynthesis, cancelSpeech } from "@/hooks/useSpeechSynthesis";
 
 interface CurrentCallProps {
   letter: string;
   number: number;
   status: "playing" | "ready" | "waiting";
+  voiceEnabled: boolean;
+  onVoiceToggle: (enabled: boolean) => void;
 }
 
 const LETTER_BG: Record<string, string> = {
@@ -16,90 +19,11 @@ const LETTER_BG: Record<string, string> = {
   O: "from-[hsl(0_75%_55%)] to-[hsl(0_75%_45%)]",
 };
 
-const CurrentCall = ({ letter, number, status }: CurrentCallProps) => {
-  const [voiceEnabled, setVoiceEnabled] = useState(false);
-  const [speechSupported, setSpeechSupported] = useState(true);
-  const [voicesLoaded, setVoicesLoaded] = useState(false);
-
-  // Check speech synthesis support and load voices
-  useEffect(() => {
-    if (!('speechSynthesis' in window)) {
-      setSpeechSupported(false);
-      console.warn('Speech Synthesis not supported in this browser');
-      return;
-    }
-
-    // Load voices
-    const loadVoices = () => {
-      const voices = window.speechSynthesis.getVoices();
-      if (voices.length > 0) {
-        setVoicesLoaded(true);
-        console.log('Voices loaded:', voices.length);
-      }
-    };
-
-    // Try loading immediately
-    loadVoices();
-
-    // Also listen for voiceschanged event (needed in some browsers)
-    window.speechSynthesis.onvoiceschanged = loadVoices;
-
-    return () => {
-      window.speechSynthesis.onvoiceschanged = null;
-    };
-  }, []);
-
-  // Store utterance globally to prevent garbage collection in some browsers (e.g. Safari)
-  useEffect(() => {
-    if (!(window as any).utterances) {
-      (window as any).utterances = [];
-    }
-  }, []);
-
-  // Auto-speak when voice is enabled and number changes
-  useEffect(() => {
-    if (voiceEnabled && speechSupported && 'speechSynthesis' in window) {
-      // Cancel any ongoing speech
-      window.speechSynthesis.cancel();
-      
-      // Small delay to ensure cancellation completes
-      const timeoutId = setTimeout(() => {
-        try {
-          const utterance = new SpeechSynthesisUtterance(`${letter} ${number}`);
-          utterance.rate = 0.9;
-          utterance.pitch = 1;
-          utterance.volume = 1;
-          utterance.lang = 'en-US';
-          
-          // Add event listeners for debugging
-          utterance.onstart = () => console.log('Speech started:', `${letter} ${number}`);
-          utterance.onerror = (e) => console.error('Speech error:', e);
-          utterance.onend = () => {
-            console.log('Speech ended');
-            if ((window as any).utterances) {
-              const index = (window as any).utterances.indexOf(utterance);
-              if (index !== -1) {
-                (window as any).utterances.splice(index, 1);
-              }
-            }
-          };
-          
-          if ((window as any).utterances) {
-            (window as any).utterances.push(utterance);
-          }
-          
-          window.speechSynthesis.speak(utterance);
-        } catch (error) {
-          console.error('Speech synthesis error:', error);
-        }
-      }, 100);
-
-      return () => {
-        clearTimeout(timeoutId);
-        // Do not cancel speech synthesis on unmount to avoid cutting it off
-      };
-    }
-  }, [letter, number, voiceEnabled, speechSupported]);
+const CurrentCall = ({ letter, number, status, voiceEnabled, onVoiceToggle }: CurrentCallProps) => {
+  const { speechSupported } = useSpeechSynthesis({
+    enabled: voiceEnabled,
+    text: `${letter} ${number}`,
+  });
 
   const toggleVoice = () => {
     if (!speechSupported) {
@@ -108,22 +32,37 @@ const CurrentCall = ({ letter, number, status }: CurrentCallProps) => {
     }
 
     const newValue = !voiceEnabled;
-    setVoiceEnabled(newValue);
+    onVoiceToggle(newValue);
 
+    // Save to localStorage
     try {
-      if (voiceEnabled && 'speechSynthesis' in window) {
-        // Turning off - cancel any ongoing speech
-        window.speechSynthesis.cancel();
-      } else if (newValue && 'speechSynthesis' in window) {
-        // Unlock speech synthesis on mobile via direct user interaction
-        const unlockUtterance = new SpeechSynthesisUtterance('');
-        unlockUtterance.volume = 0;
-        window.speechSynthesis.speak(unlockUtterance);
-      }
+      localStorage.setItem('bingoVoiceEnabled', String(newValue));
     } catch (e) {
-      console.error('Speech synthesis toggle error:', e);
+      console.error('Failed to save voice setting to localStorage', e);
+    }
+
+    if (voiceEnabled) {
+      // Turning off - cancel any ongoing speech
+      cancelSpeech();
+    } else {
+      // Turning on - unlock speech synthesis on mobile
+      unlockSpeechSynthesis();
     }
   };
+
+  // Load voices using addEventListener to avoid conflicts
+  React.useEffect(() => {
+    const loadVoices = () => {
+      window.speechSynthesis.getVoices();
+    };
+
+    loadVoices();
+    window.speechSynthesis.addEventListener('voiceschanged', loadVoices);
+
+    return () => {
+      window.speechSynthesis.removeEventListener('voiceschanged', loadVoices);
+    };
+  }, []);
 
   return (
     <div className="glass-card p-2">

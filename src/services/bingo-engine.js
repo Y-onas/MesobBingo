@@ -473,25 +473,53 @@ class BingoEngine {
       number = crypto.randomInt(1, 76);
     } while (game.calledSet.has(number));
 
-    // Update in-memory
+    // Update in-memory FIRST (before DB)
     game.calledNumbers.push(number);
     game.calledSet.add(number);
 
-    // Persist to DB with retry logic
-    await this._retryDbOperation(async () => {
-      await db.insert(calledNumbers).values({
-        gameId,
-        number,
-        callOrder: game.calledNumbers.length,
-      });
-    }, 'persisting called number');
+    try {
+      // Persist to DB with retry logic
+      await this._retryDbOperation(async () => {
+        await db.insert(calledNumbers).values({
+          gameId,
+          number,
+          callOrder: game.calledNumbers.length,
+        });
+      }, 'persisting called number');
 
-    // Update total calls in game with retry logic
-    await this._retryDbOperation(async () => {
-      await db.update(games)
-        .set({ totalCalls: game.calledNumbers.length })
-        .where(eq(games.id, gameId));
-    }, 'updating total calls');
+      // Update total calls in game with retry logic
+      await this._retryDbOperation(async () => {
+        await db.update(games)
+          .set({ totalCalls: game.calledNumbers.length })
+          .where(eq(games.id, gameId));
+      }, 'updating total calls');
+
+    } catch (dbError) {
+      // CRITICAL: DB write failed after retries - rollback in-memory state
+      logger.error(`CRITICAL: Failed to persist number ${number} for game ${gameId} after retries. Rolling back in-memory state.`, dbError);
+      
+      // Rollback in-memory changes
+      game.calledNumbers.pop();
+      game.calledSet.delete(number);
+      
+      // Pause the game to prevent further inconsistency
+      logger.error(`Pausing game ${gameId} due to database write failure`);
+      game.status = GAME_STATES.PAUSED;
+      
+      // Notify players
+      this._broadcastToGame(gameId, 'game_paused', {
+        reason: 'Database error - game paused for safety',
+        message: 'The game has been paused due to a technical issue. Please wait while we resolve this.'
+      });
+      
+      // Stop the game loop
+      if (game.callTimer) {
+        clearTimeout(game.callTimer);
+        game.callTimer = null;
+      }
+      
+      return; // Don't broadcast the number or schedule next call
+    }
 
     const letter = getBingoLetter(number);
 
@@ -1006,11 +1034,30 @@ class BingoEngine {
         } else if (game.playerCount === 1) {
           // Only 1 player remains - they win automatically
           const remainingPlayerId = Array.from(game.players)[0];
+          const boardNumber = game.playerBoards.get(remainingPlayerId);
           logger.info(`Only 1 player remains in game ${gameId}. Player ${remainingPlayerId} wins automatically.`);
           
-          // Award win to remaining player
-          const boardNumber = game.playerBoards.get(remainingPlayerId);
-          await this._awardWin(gameId, remainingPlayerId, boardNumber, 'last_player_standing');
+          // Award win to remaining player with transaction
+          const client = await pool.connect();
+          try {
+            await client.query('BEGIN');
+            await this._awardWinToRemainingPlayer(client, game, remainingPlayerId, boardNumber, gameId);
+            await client.query('COMMIT');
+            
+            // Broadcast winner
+            this._broadcastToGame(gameId, 'game_won', {
+              winnerId: remainingPlayerId,
+              boardNumber,
+              reason: 'last_player_standing',
+            });
+          } catch (error) {
+            await client.query('ROLLBACK');
+            logger.error(`Error awarding win to remaining player in game ${gameId}:`, error);
+            // Fallback: end game without winner
+            await this._endGameNoWinner(gameId);
+          } finally {
+            client.release();
+          }
         }
       }
 
@@ -1202,10 +1249,6 @@ class BingoEngine {
   }
 
   /**
-   * End game when all players have disconnected
-   * Public method that can be called from disconnect handler
-   */
-  /**
    * Get winner information for a completed game
    * @param {number} gameId
    * @returns {Promise<{winnerName: string, winAmount: number}|null>}
@@ -1214,20 +1257,28 @@ class BingoEngine {
     try {
       const result = await pool.query(
         `SELECT 
-          u.display_name as winner_name,
-          gw.win_amount
-         FROM game_winners gw
-         JOIN users u ON u.telegram_id = gw.telegram_id
-         WHERE gw.game_id = $1
-         ORDER BY gw.created_at DESC
+          g.winner_id,
+          g.prize_per_winner as win_amount,
+          u.first_name,
+          u.last_name,
+          u.username
+         FROM games g
+         LEFT JOIN users u ON u.telegram_id = g.winner_id
+         WHERE g.id = $1 AND g.winner_id IS NOT NULL
          LIMIT 1`,
         [gameId]
       );
 
       if (result.rows.length > 0) {
+        const row = result.rows[0];
+        // Build winner name from available fields
+        const winnerName = row.first_name 
+          ? `${row.first_name}${row.last_name ? ' ' + row.last_name : ''}`
+          : row.username || `User ${row.winner_id}`;
+        
         return {
-          winnerName: result.rows[0].winner_name,
-          winAmount: result.rows[0].win_amount
+          winnerName,
+          winAmount: parseFloat(row.win_amount || 0)
         };
       }
       return null;
@@ -1415,7 +1466,7 @@ class BingoEngine {
         );
 
         await client.query('COMMIT');
-        logger.info(`Game ${gameId} ended. House wins ${game.totalPot}. No refunds issued to ${game.players.size} players.`);
+        logger.info(`Game ${gameId} ended. House wins ${game.prizePool}. No refunds issued to ${game.players.size} players.`);
       } catch (error) {
         await client.query('ROLLBACK');
         logger.error(`Error ending abandoned game ${gameId}:`, error);
@@ -1504,7 +1555,9 @@ class BingoEngine {
         const pauseDuration = now - game.pausedAt;
         if (pauseDuration > 600000) { // 10 minutes
           logger.warn(`Cleaning up abandoned paused game ${gameId} (paused for ${Math.round(pauseDuration / 1000)}s)`);
-          this.endGameHouseWins(gameId);
+          this.endGameHouseWins(gameId).catch(err =>
+            logger.error(`Error ending abandoned paused game ${gameId}:`, err)
+          );
         }
       }
     }
@@ -1622,6 +1675,7 @@ class BingoEngine {
    * @param {Function} operation - Async function to retry
    * @param {string} operationName - Name for logging
    * @param {number} maxRetries - Maximum retry attempts (default: 3)
+   * @throws {Error} Throws the last error if all retries fail
    */
   async _retryDbOperation(operation, operationName, maxRetries = 3) {
     let lastError;
@@ -1642,6 +1696,7 @@ class BingoEngine {
       }
     }
     logger.error(`Error ${operationName} after ${maxRetries} attempts:`, lastError);
+    throw lastError; // Propagate error to caller
   }
 }
 

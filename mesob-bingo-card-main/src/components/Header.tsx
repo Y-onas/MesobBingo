@@ -33,6 +33,8 @@ const Header = ({ balance = 5, onRefresh, showBalance = true }: HeaderProps) => 
             onClick={onRefresh}
             className="p-1.5 rounded-lg bg-primary/10 text-primary hover:bg-primary/20 transition-colors"
             title="Refresh Balance"
+            aria-label="Refresh Balance"
+            type="button"
           >
             <RefreshCw className="w-3.5 h-3.5" />
           </button>

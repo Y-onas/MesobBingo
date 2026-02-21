@@ -4,9 +4,10 @@ require('dotenv').config();
 async function cleanupStuckGames() {
   console.log('🧹 Cleaning up stuck games...\n');
 
-  const client = await pool.connect();
-  
+  let client;
   try {
+    client = await pool.connect();
+    
     // Find games that have been "playing" for more than 2 hours
     const stuckGames = await client.query(`
       SELECT id, status, total_calls, created_at, 
@@ -44,7 +45,9 @@ async function cleanupStuckGames() {
   } catch (error) {
     console.error('❌ Error:', error);
   } finally {
-    client.release();
+    if (client) {
+      client.release();
+    }
     await pool.end();
   }
 }

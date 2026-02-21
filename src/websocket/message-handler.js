@@ -73,6 +73,9 @@ function registerHandlers(socket, engine, connManager, rateLimiter) {
       // User is in an active game — auto-rejoin
       socket.join(`game:${activeGame.gameId}`);
       
+      // Register socket with connection manager
+      connManager.joinGame(socketId, activeGame.gameId, activeGame.boardNumber);
+      
       // If game was paused due to all players disconnecting, resume it
       const connectedPlayers = connManager.getGamePlayerCount(activeGame.gameId);
       if (connectedPlayers === 1) { // This is the first player to reconnect
@@ -251,39 +254,47 @@ function registerHandlers(socket, engine, connManager, rateLimiter) {
       
       // Check if ALL players are now disconnected (ONLY pause if ALL disconnect)
       setTimeout(async () => {
-        const game = await engine.getGameState(meta.gameId);
-        if (!game) return; // Game already ended normally
-        
-        const connectedPlayers = connManager.getGamePlayerCount(meta.gameId);
-        
-        // ONLY pause if:
-        // 1. NO players are connected (ALL disconnected)
-        // 2. Game is still playing (not completed)
-        if (connectedPlayers === 0 && game.status === 'playing') {
-          logger.warn(`All players disconnected from game ${meta.gameId}. PAUSING game for ${DISCONNECT_GRACE_PERIODS.GAME_PAUSE_TIMEOUT_MS / 1000}s grace period...`);
+        try {
+          const game = await engine.getGameState(meta.gameId);
+          if (!game) return; // Game already ended normally
           
-          // PAUSE the game - stop calling numbers
-          engine.pauseGame(meta.gameId);
+          const connectedPlayers = connManager.getGamePlayerCount(meta.gameId);
           
-          // Store timeout so it can be cancelled if players reconnect
-          const pauseTimeout = setTimeout(async () => {
-            const finalCheck = connManager.getGamePlayerCount(meta.gameId);
-            const gameStillExists = await engine.getGameState(meta.gameId);
+          // ONLY pause if:
+          // 1. NO players are connected (ALL disconnected)
+          // 2. Game is still playing (not completed)
+          if (connectedPlayers === 0 && game.status === 'playing') {
+            logger.warn(`All players disconnected from game ${meta.gameId}. PAUSING game for ${DISCONNECT_GRACE_PERIODS.GAME_PAUSE_TIMEOUT_MS / 1000}s grace period...`);
             
-            // If still no players after 40 seconds, house wins
-            if (finalCheck === 0 && gameStillExists && gameStillExists.status === 'playing') {
-              logger.info(`No players reconnected to game ${meta.gameId} after ${DISCONNECT_GRACE_PERIODS.GAME_PAUSE_TIMEOUT_MS / 1000}s. House wins - no refunds.`);
-              await engine.endGameHouseWins(meta.gameId);
-            } else if (finalCheck > 0) {
-              logger.info(`Player(s) reconnected to game ${meta.gameId} during timeout check.`);
-              // Resume is handled by CHECK_ACTIVE_GAME handler
-            }
-          }, DISCONNECT_GRACE_PERIODS.GAME_PAUSE_TIMEOUT_MS);
-          
-          // Store timeout in engine so it can be cancelled
-          engine.pauseTimeouts.set(meta.gameId, pauseTimeout);
-        } else if (connectedPlayers > 0) {
-          logger.debug(`Game ${meta.gameId} still has ${connectedPlayers} connected player(s). Game continues normally.`);
+            // PAUSE the game - stop calling numbers
+            engine.pauseGame(meta.gameId);
+            
+            // Store timeout so it can be cancelled if players reconnect
+            const pauseTimeout = setTimeout(async () => {
+              try {
+                const finalCheck = connManager.getGamePlayerCount(meta.gameId);
+                const gameStillExists = await engine.getGameState(meta.gameId);
+                
+                // If still no players after 40 seconds, house wins
+                if (finalCheck === 0 && gameStillExists && gameStillExists.status === 'playing') {
+                  logger.info(`No players reconnected to game ${meta.gameId} after ${DISCONNECT_GRACE_PERIODS.GAME_PAUSE_TIMEOUT_MS / 1000}s. House wins - no refunds.`);
+                  await engine.endGameHouseWins(meta.gameId);
+                } else if (finalCheck > 0) {
+                  logger.info(`Player(s) reconnected to game ${meta.gameId} during timeout check.`);
+                  // Resume is handled by CHECK_ACTIVE_GAME handler
+                }
+              } catch (err) {
+                logger.error(`Error in pause timeout for game ${meta.gameId}:`, err);
+              }
+            }, DISCONNECT_GRACE_PERIODS.GAME_PAUSE_TIMEOUT_MS);
+            
+            // Store timeout in engine so it can be cancelled
+            engine.pauseTimeouts.set(meta.gameId, pauseTimeout);
+          } else if (connectedPlayers > 0) {
+            logger.debug(`Game ${meta.gameId} still has ${connectedPlayers} connected player(s). Game continues normally.`);
+          }
+        } catch (err) {
+          logger.error(`Error checking disconnect state for game ${meta.gameId}:`, err);
         }
       }, 100); // Small delay to ensure connection state is updated
     }

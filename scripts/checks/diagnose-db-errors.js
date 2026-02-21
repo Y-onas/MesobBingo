@@ -6,10 +6,11 @@ require('dotenv').config();
 async function diagnose() {
   console.log('🔍 Diagnosing database connection issues...\n');
 
+  let client;
   try {
     // Check active games
     console.log('1. Checking active games...');
-    const client = await pool.connect();
+    client = await pool.connect();
     const result = await client.query(
       "SELECT id, status, total_calls, created_at FROM games WHERE status = 'playing' ORDER BY created_at DESC LIMIT 5"
     );
@@ -17,7 +18,6 @@ async function diagnose() {
     result.rows.forEach(g => {
       console.log(`   - Game ${g.id}: ${g.total_calls} calls, started ${g.created_at}`);
     });
-    client.release();
 
     // Check pool status
     console.log('\n2. Connection pool status:');
@@ -53,6 +53,10 @@ async function diagnose() {
   } catch (error) {
     console.error('\n❌ Diagnosis failed:', error);
   } finally {
+    // Release client in finally block to ensure it's always released
+    if (client) {
+      client.release();
+    }
     await pool.end();
     process.exit(0);
   }
