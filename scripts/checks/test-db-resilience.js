@@ -109,11 +109,14 @@ async function testDbOperations() {
     console.log('\n4. Testing circuit breaker with repeated failures...');
     circuitBreaker.reset();
     
+    // Circuit breaker threshold is 5 (from db-operations.js)
+    const CIRCUIT_BREAKER_THRESHOLD = 5;
     let circuitBreakerOpened = false;
     let failureCount = 0;
     
     // Simulate repeated failures - circuit breaker tracks across all operations
-    for (let i = 0; i < 7; i++) {
+    // Loop one more than threshold to ensure it opens
+    for (let i = 0; i < CIRCUIT_BREAKER_THRESHOLD + 2; i++) {
       try {
         await executeDbOperation(
           async () => {
@@ -175,13 +178,10 @@ async function testGamePauseScenario() {
     const result = await executeDbOperation(
       async () => {
         operationAttempted = true;
-        // This will fail because game doesn't exist
-        await db.update(games)
-          .set({ 
-            paused: true,
-            pausedAt: new Date()
-          })
-          .where(eq(games.id, testGameId));
+        // Simulate a DB failure to actually test fallback behavior
+        // NOTE: UPDATE on non-existent row succeeds silently in SQL,
+        // so we throw explicitly to test the fallback mechanism
+        throw new Error('Simulated DB failure for pause test');
       },
       {
         operationName: `pause game ${testGameId}`,
@@ -211,9 +211,10 @@ async function testGamePauseScenario() {
     try {
       await executeDbOperation(
         async () => {
-          await db.update(games)
-            .set({ paused: true, pausedAt: new Date() })
-            .where(eq(games.id, testGameId));
+          // Simulate a critical DB failure
+          // NOTE: UPDATE on non-existent row succeeds silently in SQL,
+          // so we throw explicitly to test critical error handling
+          throw new Error('Simulated critical DB failure');
         },
         {
           operationName: `critical pause game ${testGameId}`,
@@ -262,30 +263,14 @@ async function testTransactionSafety() {
       return false;
     }
     
-    // Test 2: Transaction with error (should rollback)
+    // Test 2: Transaction with error (should rollback and use fallback)
     console.log('\n2. Testing transaction rollback on error...');
-    let rollbackWorked = false;
     
-    try {
-      await safeTransaction(
-        async (client) => {
-          await client.query('SELECT 1');
-          throw new Error('Simulated transaction error');
-        },
-        { 
-          name: 'failing transaction',
-          critical: false,
-          fallback: () => ({ rolledBack: true })
-        }
-      );
-    } catch (error) {
-      // Should not reach here with critical: false
-    }
-    
-    // With critical: false, should get fallback
+    // With critical: false, should get fallback after rollback
     const result2 = await safeTransaction(
       async (client) => {
-        throw new Error('Simulated error');
+        await client.query('SELECT 1'); // This succeeds
+        throw new Error('Simulated error'); // This triggers rollback
       },
       { 
         name: 'non-critical transaction',
@@ -296,10 +281,7 @@ async function testTransactionSafety() {
     
     if (result2 && result2.rolledBack) {
       console.log('   ✓ Transaction rollback handled correctly with fallback');
-      rollbackWorked = true;
-    }
-    
-    if (!rollbackWorked) {
+    } else {
       console.log('   ✗ Transaction rollback did not work as expected');
       return false;
     }

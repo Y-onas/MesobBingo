@@ -32,11 +32,13 @@ if (!useDirectConnection) {
 }
 
 // ─── Neon HTTP driver (for simple queries via Drizzle) ──────────────
+// NOTE: We rely on PostgreSQL-level timeouts (statement_timeout, query_timeout)
+// rather than HTTP-level AbortSignal because:
+// 1. AbortSignal.timeout() creates a signal that aborts once and stays aborted forever
+// 2. Reusing the same aborted signal causes all subsequent queries to fail immediately
+// 3. PostgreSQL timeouts are more reliable and don't require per-query signal management
 const sql = neon(DATABASE_URL, {
   fetchConnectionCache: true,
-  fetchOptions: {
-    signal: AbortSignal.timeout(15000), // 15 second timeout using AbortSignal
-  }
 });
 const db = drizzle(sql, { schema });
 

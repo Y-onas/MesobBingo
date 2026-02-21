@@ -480,6 +480,7 @@ class BingoEngine {
 
     try {
       // Persist to DB with robust retry logic and circuit breaker
+      // CRITICAL: This must succeed or we rollback in-memory state
       await executeDbOperation(
         async () => {
           await db.insert(calledNumbers).values({
@@ -495,22 +496,6 @@ class BingoEngine {
           critical: true // Throw error if fails - we need to rollback
         }
       );
-
-      // Update total calls in game with retry logic
-      await executeDbOperation(
-        async () => {
-          await db.update(games)
-            .set({ totalCalls: game.calledNumbers.length })
-            .where(eq(games.id, gameId));
-        },
-        {
-          operationName: `updating total calls for game ${gameId}`,
-          maxRetries: 3,
-          retryDelay: 1000,
-          critical: false // Non-critical - can be synced later
-        }
-      );
-
     } catch (dbError) {
       // CRITICAL: DB write failed after retries - rollback in-memory state
       logger.error(`CRITICAL: Failed to persist number ${number} for game ${gameId} after retries. Rolling back in-memory state.`, dbError);
@@ -539,6 +524,22 @@ class BingoEngine {
       
       return; // Don't broadcast the number or schedule next call
     }
+
+    // Update total calls in game with retry logic (non-critical, outside try/catch)
+    // If this fails, it won't affect game flow - totalCalls can be synced later
+    await executeDbOperation(
+      async () => {
+        await db.update(games)
+          .set({ totalCalls: game.calledNumbers.length })
+          .where(eq(games.id, gameId));
+      },
+      {
+        operationName: `updating total calls for game ${gameId}`,
+        maxRetries: 3,
+        retryDelay: 1000,
+        critical: false // Non-critical - can be synced later
+      }
+    );
 
     const letter = getBingoLetter(number);
 
