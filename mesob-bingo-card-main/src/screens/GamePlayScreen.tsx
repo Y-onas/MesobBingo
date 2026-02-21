@@ -72,14 +72,6 @@ const GamePlayScreen = ({
     onVoiceToggle(newValue);
     console.log('Called onVoiceToggle with:', newValue);
     
-    // Save to localStorage
-    try {
-      localStorage.setItem('bingoVoiceEnabled', String(newValue));
-      console.log('Saved to localStorage:', newValue);
-    } catch (e) {
-      console.error('Failed to save voice setting to localStorage', e);
-    }
-    
     if (voiceEnabled) {
       // Turning off - cancel any ongoing speech
       cancelSpeech();

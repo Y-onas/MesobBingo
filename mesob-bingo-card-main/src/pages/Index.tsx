@@ -49,10 +49,15 @@ const Index = () => {
     return initialValue;
   });
 
-  // Log voice state changes
+  // Persist voice preference whenever it changes
   useEffect(() => {
-    if (import.meta.env.DEV) {
-      console.log('Index.tsx - Voice state changed to:', voiceEnabled);
+    try {
+      localStorage.setItem('bingoVoiceEnabled', String(voiceEnabled));
+      if (import.meta.env.DEV) {
+        console.log('Index.tsx - Voice state persisted to localStorage:', voiceEnabled);
+      }
+    } catch (e) {
+      console.error('Failed to save voice setting to localStorage', e);
     }
   }, [voiceEnabled]);
 

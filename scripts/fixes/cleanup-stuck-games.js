@@ -1,5 +1,5 @@
-const { pool } = require('../../src/database/index');
 require('dotenv').config();
+const { pool } = require('../../src/database/index');
 
 async function cleanupStuckGames() {
   console.log('🧹 Cleaning up stuck games...\n');
@@ -8,13 +8,14 @@ async function cleanupStuckGames() {
   try {
     client = await pool.connect();
     
-    // Find games that have been "playing" for more than 2 hours
+    // Find games that have been "playing" for more than 2 hours (excluding paused games)
     const stuckGames = await client.query(`
       SELECT id, status, total_calls, created_at, 
              EXTRACT(EPOCH FROM (NOW() - created_at))/3600 as hours_old
       FROM games 
       WHERE status = 'playing' 
         AND created_at < NOW() - INTERVAL '2 hours'
+        AND (paused IS NULL OR paused = false)
       ORDER BY created_at ASC
     `);
 
@@ -36,6 +37,7 @@ async function cleanupStuckGames() {
           finished_at = NOW()
       WHERE status = 'playing' 
         AND created_at < NOW() - INTERVAL '2 hours'
+        AND (paused IS NULL OR paused = false)
       RETURNING id
     `);
 

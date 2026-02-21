@@ -26,20 +26,8 @@ const CurrentCall = ({ letter, number, status, voiceEnabled, onVoiceToggle }: Cu
   });
 
   const toggleVoice = () => {
-    if (!speechSupported) {
-      alert('Speech synthesis is not supported in this browser/environment');
-      return;
-    }
-
     const newValue = !voiceEnabled;
     onVoiceToggle(newValue);
-
-    // Save to localStorage
-    try {
-      localStorage.setItem('bingoVoiceEnabled', String(newValue));
-    } catch (e) {
-      console.error('Failed to save voice setting to localStorage', e);
-    }
 
     if (voiceEnabled) {
       // Turning off - cancel any ongoing speech

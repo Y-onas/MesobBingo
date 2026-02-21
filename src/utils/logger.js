@@ -15,6 +15,7 @@ const jsonFormat = winston.format.combine(
 // Human-readable format for console
 const consoleFormat = winston.format.combine(
   winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
+  winston.format.errors({ stack: true }),
   winston.format.colorize(),
   winston.format.printf(({ level, message, timestamp, stack, ...meta }) => {
     let log = `${timestamp} [${level}]: ${message}`;
@@ -65,10 +66,11 @@ logger.logMetric = (metric, value, tags = {}) => {
 };
 
 logger.logError = (error, context = {}) => {
+  const isError = error instanceof Error;
   logger.error('Error occurred', {
     ...context,
-    error: error.message,
-    stack: error.stack
+    error: isError ? error.message : String(error),
+    stack: isError ? error.stack : undefined
   });
 };
 

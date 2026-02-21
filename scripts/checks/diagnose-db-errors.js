@@ -1,7 +1,7 @@
-const { pool, db } = require('../../src/database/index');
-const { games, calledNumbers } = require('../../src/database/schema');
-const { gte } = require('drizzle-orm');
 require('dotenv').config();
+const { pool, db } = require('../../src/database/index');
+const { calledNumbers } = require('../../src/database/schema');
+const { gte, and, eq } = require('drizzle-orm');
 
 async function diagnose() {
   console.log('🔍 Diagnosing database connection issues...\n');
@@ -50,8 +50,13 @@ async function diagnose() {
         await new Promise(resolve => setTimeout(resolve, 100));
       }
 
-      // Clean up test data using ORM
-      await db.delete(calledNumbers).where(gte(calledNumbers.callOrder, 999));
+      // Clean up test data using ORM (scoped to testGameId)
+      await db.delete(calledNumbers).where(
+        and(
+          eq(calledNumbers.gameId, testGameId),
+          gte(calledNumbers.callOrder, 999)
+        )
+      );
       console.log('   Test data cleaned up');
     }
 

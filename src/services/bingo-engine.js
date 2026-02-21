@@ -506,6 +506,7 @@ class BingoEngine {
       logger.error(`Pausing game ${gameId} due to database write failure`);
       game.paused = true;
       game.pausedAt = Date.now();
+      this.metrics.gamesPaused++;
       
       // Notify players
       this._broadcastToGame(gameId, 'game_paused', {
@@ -515,6 +516,9 @@ class BingoEngine {
       
       // Stop the game loop
       this._stopTimers(gameId);
+      
+      // Sync connection manager so reconnecting players can trigger resumeGame
+      this.connectionManager.setGamePaused(gameId, true);
       
       return; // Don't broadcast the number or schedule next call
     }
@@ -815,8 +819,8 @@ class BingoEngine {
 
       // Mark game as completed
       await client.query(
-        'UPDATE games SET status = $1, winner_id = $2, winner_board_number = $3, finished_at = NOW() WHERE id = $4',
-        [GAME_STATES.COMPLETED, telegramId, boardNumber, gameId]
+        'UPDATE games SET status = $1, winner_id = $2, winner_board_number = $3, prize_per_winner = $4, finished_at = NOW() WHERE id = $5',
+        [GAME_STATES.COMPLETED, telegramId, boardNumber, winAmount, gameId]
       );
 
       // Update in-memory
@@ -1624,7 +1628,6 @@ class BingoEngine {
    */
   getStats() {
     return {
-      activeGames: this.activeGames.size,
       metrics: { ...this.metrics },
       memory: {
         activeGames: this.activeGames.size,
