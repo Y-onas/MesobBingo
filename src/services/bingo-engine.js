@@ -1,5 +1,6 @@
 const crypto = require('crypto');
 const { db, pool } = require('../database');
+const { executeDbOperation, safeQuery } = require('../database/db-operations');
 const { games, boards, gamePlayers, calledNumbers, gameRooms, users } = require('../database/schema');
 const { eq, sql, and, desc, isNull } = require('drizzle-orm');
 const { generateBingoBoard, hashBoard, validateBingoWin, getBingoLetter } = require('../utils/helpers');
@@ -478,21 +479,37 @@ class BingoEngine {
     game.calledSet.add(number);
 
     try {
-      // Persist to DB with retry logic
-      await this._retryDbOperation(async () => {
-        await db.insert(calledNumbers).values({
-          gameId,
-          number,
-          callOrder: game.calledNumbers.length,
-        });
-      }, 'persisting called number');
+      // Persist to DB with robust retry logic and circuit breaker
+      await executeDbOperation(
+        async () => {
+          await db.insert(calledNumbers).values({
+            gameId,
+            number,
+            callOrder: game.calledNumbers.length,
+          });
+        },
+        {
+          operationName: `persisting called number ${number} for game ${gameId}`,
+          maxRetries: 3,
+          retryDelay: 1000,
+          critical: true // Throw error if fails - we need to rollback
+        }
+      );
 
       // Update total calls in game with retry logic
-      await this._retryDbOperation(async () => {
-        await db.update(games)
-          .set({ totalCalls: game.calledNumbers.length })
-          .where(eq(games.id, gameId));
-      }, 'updating total calls');
+      await executeDbOperation(
+        async () => {
+          await db.update(games)
+            .set({ totalCalls: game.calledNumbers.length })
+            .where(eq(games.id, gameId));
+        },
+        {
+          operationName: `updating total calls for game ${gameId}`,
+          maxRetries: 3,
+          retryDelay: 1000,
+          critical: false // Non-critical - can be synced later
+        }
+      );
 
     } catch (dbError) {
       // CRITICAL: DB write failed after retries - rollback in-memory state
@@ -1329,17 +1346,23 @@ class BingoEngine {
     // Update connection manager
     this.connectionManager.setGamePaused(gameId, true);
     
-    // Persist pause state to database
-    try {
-      await db.update(games)
-        .set({ 
-          paused: true,
-          pausedAt: new Date()
-        })
-        .where(eq(games.id, gameId));
-    } catch (error) {
-      logger.error(`Error persisting pause state for game ${gameId}:`, error);
-    }
+    // Persist pause state to database with robust retry and circuit breaker
+    await executeDbOperation(
+      async () => {
+        await db.update(games)
+          .set({ 
+            paused: true,
+            pausedAt: new Date()
+          })
+          .where(eq(games.id, gameId));
+      },
+      {
+        operationName: `persisting pause state for game ${gameId}`,
+        maxRetries: 3,
+        retryDelay: 1000,
+        critical: false // Don't crash if DB write fails - game is paused in memory
+      }
+    );
     
     logger.info(`Game ${gameId} paused. Waiting for players to reconnect.`);
   }

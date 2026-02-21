@@ -10,40 +10,108 @@ if (!DATABASE_URL) {
   process.exit(1);
 }
 
+// Extract direct connection URL (remove -pooler for better performance)
+const directDatabaseUrl = DATABASE_URL.replace('-pooler.', '.');
+const useDirectConnection = !DATABASE_URL.includes('-pooler');
+
+if (!useDirectConnection) {
+  logger.warn('⚠️  Using pooler connection. For better performance, use direct connection URL.');
+  logger.warn('   Change: ep-xxx-pooler.region.aws.neon.tech → ep-xxx.region.aws.neon.tech');
+}
+
 // ─── Neon HTTP driver (for simple queries via Drizzle) ──────────────
-const sql = neon(DATABASE_URL);
+const sql = neon(DATABASE_URL, {
+  fetchConnectionCache: true,
+  fetchOptions: {
+    timeout: 15000, // 15 second timeout
+  }
+});
 const db = drizzle(sql, { schema });
 
-// ─── pg Pool (for transactions with SELECT ... FOR UPDATE) ──────────
-const pool = new Pool({
-  connectionString: DATABASE_URL,
-  max: 20,
-  idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 5000,
+// ─── pg Pool (for transactions and critical operations) ──────────────
+// Use direct connection for pool to avoid pooler timeout issues
+const poolConfig = {
+  connectionString: useDirectConnection ? DATABASE_URL : directDatabaseUrl,
+  max: 10, // Reduced from 20 to avoid connection limits
+  min: 2, // Keep minimum connections alive
+  idleTimeoutMillis: 60000, // 60s idle timeout
+  connectionTimeoutMillis: 15000, // 15s connection timeout
+  statement_timeout: 15000, // 15s query timeout
+  query_timeout: 15000, // Additional query timeout
+  keepAlive: true,
+  keepAliveInitialDelayMillis: 10000,
   ssl: { 
-    rejectUnauthorized: process.env.NODE_ENV === 'development' ? false : true 
+    rejectUnauthorized: false // Neon requires SSL but with self-signed certs
   },
+};
+
+const pool = new Pool(poolConfig);
+
+// Connection pool event handlers
+pool.on('error', (err, client) => {
+  logger.error('Unexpected database pool error:', {
+    message: err.message,
+    code: err.code,
+    stack: err.stack
+  });
 });
 
-pool.on('error', (err) => {
-  logger.error('Database pool error:', err);
+pool.on('connect', (client) => {
+  logger.debug('New database client connected to pool');
 });
 
-// Health check
-const checkDbHealth = async () => {
+pool.on('remove', (client) => {
+  logger.debug('Database client removed from pool');
+});
+
+// Enhanced health check with retry
+const checkDbHealth = async (retries = 3) => {
   let client;
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      client = await pool.connect();
+      const result = await client.query('SELECT NOW() as time, version() as version');
+      logger.info('Database health check passed:', {
+        time: result.rows[0].time,
+        poolSize: pool.totalCount,
+        idleConnections: pool.idleCount,
+        waitingClients: pool.waitingCount
+      });
+      return true;
+    } catch (err) {
+      logger.error(`DB health check failed (attempt ${attempt}/${retries}):`, {
+        message: err.message,
+        code: err.code
+      });
+      if (attempt < retries) {
+        await new Promise(resolve => setTimeout(resolve, 2000 * attempt));
+      }
+    } finally {
+      if (client) client.release();
+    }
+  }
+  return false;
+};
+
+// Graceful shutdown handler
+const closePool = async () => {
   try {
-    client = await pool.connect();
-    await client.query('SELECT 1');
-    return true;
+    await pool.end();
+    logger.info('Database pool closed gracefully');
   } catch (err) {
-    logger.error('DB health check failed:', err);
-    return false;
-  } finally {
-    if (client) client.release();
+    logger.error('Error closing database pool:', err);
   }
 };
 
-logger.info('Neon database connection configured (HTTP + Pool)');
+// Register shutdown handlers
+process.on('SIGTERM', closePool);
+process.on('SIGINT', closePool);
 
-module.exports = { db, pool, checkDbHealth };
+logger.info('Neon database connection configured', {
+  driver: 'HTTP + Pool',
+  poolMax: poolConfig.max,
+  poolMin: poolConfig.min,
+  connectionType: useDirectConnection ? 'direct' : 'pooler (fallback to direct for pool)'
+});
+
+module.exports = { db, pool, checkDbHealth, closePool };
