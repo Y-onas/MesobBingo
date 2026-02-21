@@ -504,7 +504,8 @@ class BingoEngine {
       
       // Pause the game to prevent further inconsistency
       logger.error(`Pausing game ${gameId} due to database write failure`);
-      game.status = GAME_STATES.PAUSED;
+      game.paused = true;
+      game.pausedAt = Date.now();
       
       // Notify players
       this._broadcastToGame(gameId, 'game_paused', {
@@ -513,10 +514,7 @@ class BingoEngine {
       });
       
       // Stop the game loop
-      if (game.callTimer) {
-        clearTimeout(game.callTimer);
-        game.callTimer = null;
-      }
+      this._stopTimers(gameId);
       
       return; // Don't broadcast the number or schedule next call
     }
@@ -1043,13 +1041,7 @@ class BingoEngine {
             await client.query('BEGIN');
             await this._awardWinToRemainingPlayer(client, game, remainingPlayerId, boardNumber, gameId);
             await client.query('COMMIT');
-            
-            // Broadcast winner
-            this._broadcastToGame(gameId, 'game_won', {
-              winnerId: remainingPlayerId,
-              boardNumber,
-              reason: 'last_player_standing',
-            });
+            // Note: _awardWinToRemainingPlayer already broadcasts game_won
           } catch (error) {
             await client.query('ROLLBACK');
             logger.error(`Error awarding win to remaining player in game ${gameId}:`, error);
@@ -1460,7 +1452,9 @@ class BingoEngine {
           `UPDATE games 
            SET status = $1, 
                finished_at = NOW(),
-               notes = 'House win - all players disconnected and did not reconnect within grace period'
+               notes = 'House win - all players disconnected and did not reconnect within grace period',
+               paused = false,
+               paused_at = NULL
            WHERE id = $2`,
           [GAME_STATES.COMPLETED, gameId]
         );

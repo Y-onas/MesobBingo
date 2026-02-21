@@ -28,6 +28,8 @@ async function fixWithdrawalStatus() {
   console.log('🔄 Fixing withdrawal status from "completed" to "approved"...\n');
 
   let client;
+  let exitCode = 0;
+  
   try {
     client = await pool.connect();
     
@@ -56,13 +58,15 @@ async function fixWithdrawalStatus() {
 
   } catch (error) {
     console.error('❌ Migration failed:', error);
-    process.exit(1);
+    exitCode = 1;
   } finally {
     if (client) {
       client.release();
     }
     await pool.end();
   }
+
+  process.exit(exitCode);
 }
 
 fixWithdrawalStatus();

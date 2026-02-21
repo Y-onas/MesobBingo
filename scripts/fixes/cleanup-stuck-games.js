@@ -44,6 +44,7 @@ async function cleanupStuckGames() {
 
   } catch (error) {
     console.error('❌ Error:', error);
+    process.exitCode = 1;
   } finally {
     if (client) {
       client.release();
@@ -52,4 +53,7 @@ async function cleanupStuckGames() {
   }
 }
 
-cleanupStuckGames();
+cleanupStuckGames().catch(err => {
+  console.error('❌ Unhandled error:', err);
+  process.exit(1);
+});

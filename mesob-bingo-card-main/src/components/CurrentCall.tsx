@@ -52,6 +52,8 @@ const CurrentCall = ({ letter, number, status, voiceEnabled, onVoiceToggle }: Cu
 
   // Load voices using addEventListener to avoid conflicts
   React.useEffect(() => {
+    if (!('speechSynthesis' in window)) return;
+
     const loadVoices = () => {
       window.speechSynthesis.getVoices();
     };

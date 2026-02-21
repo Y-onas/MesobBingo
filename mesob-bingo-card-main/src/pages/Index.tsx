@@ -43,13 +43,17 @@ const Index = () => {
   const [voiceEnabled, setVoiceEnabled] = useState(() => {
     const saved = localStorage.getItem('bingoVoiceEnabled');
     const initialValue = saved === 'true';
-    console.log('Index.tsx - Initial voice state from localStorage:', saved, '-> boolean:', initialValue);
+    if (import.meta.env.DEV) {
+      console.log('Index.tsx - Initial voice state from localStorage:', saved, '-> boolean:', initialValue);
+    }
     return initialValue;
   });
 
   // Log voice state changes
   useEffect(() => {
-    console.log('Index.tsx - Voice state changed to:', voiceEnabled);
+    if (import.meta.env.DEV) {
+      console.log('Index.tsx - Voice state changed to:', voiceEnabled);
+    }
   }, [voiceEnabled]);
 
   // ─── Wire socket events to game state ───────────────────────────
@@ -159,13 +163,17 @@ const Index = () => {
   };
 
   const handleRefreshBalance = () => {
-    console.log('handleRefreshBalance called - emitting GET_BALANCE');
+    if (import.meta.env.DEV) {
+      console.log('handleRefreshBalance called - emitting GET_BALANCE');
+    }
     emit(SOCKET_EVENTS.GET_BALANCE);
   };
 
   const handleRefreshGame = () => {
     // Refresh balance and check for active game (reconnect if needed)
-    console.log('Refresh button clicked - emitting GET_BALANCE and CHECK_ACTIVE_GAME');
+    if (import.meta.env.DEV) {
+      console.log('Refresh button clicked - emitting GET_BALANCE and CHECK_ACTIVE_GAME');
+    }
     emit(SOCKET_EVENTS.GET_BALANCE);
     emit(SOCKET_EVENTS.CHECK_ACTIVE_GAME);
   };

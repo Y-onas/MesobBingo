@@ -50,17 +50,17 @@ const logger = winston.createLogger({
 // Add structured logging helpers
 logger.logGameEvent = (event, gameId, data = {}) => {
   logger.info('Game event', {
+    ...data,
     event,
-    gameId,
-    ...data
+    gameId
   });
 };
 
 logger.logMetric = (metric, value, tags = {}) => {
   logger.info('Metric', {
+    ...tags,
     metric,
-    value,
-    ...tags
+    value
   });
 };
 
