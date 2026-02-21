@@ -459,7 +459,7 @@ class BingoEngine {
    */
   async _callNumber(gameId) {
     const game = this.activeGames.get(gameId);
-    if (!game || game.status !== GAME_STATES.PLAYING) return;
+    if (!game || game.status !== GAME_STATES.PLAYING || game.paused) return;
 
     // All numbers called — no winner
     if (game.calledSet.size >= 75) {
@@ -1017,6 +1017,9 @@ class BingoEngine {
     // During play - treat like abandoning the game (lose entry fee)
     if (game.status === GAME_STATES.PLAYING) {
       // Remove player from game (no refund - penalty for leaving)
+      // NOTE: Player removal is in-memory only during active gameplay.
+      // game_players table is not updated here - it serves as a historical record
+      // of who joined the game. In-memory state is the source of truth during play.
       if (game.players.has(telegramId)) {
         game.players.delete(telegramId);
         game.playerBoards.delete(telegramId);
@@ -1047,6 +1050,11 @@ class BingoEngine {
             await this._awardWinToRemainingPlayer(client, game, remainingPlayerId, boardNumber, gameId);
             await client.query('COMMIT');
             // Note: _awardWinToRemainingPlayer already broadcasts game_won
+            
+            // Update metrics
+            this.metrics.playerWins++;
+            this.metrics.gamesCompleted++;
+            this.metrics.totalPayouts += Math.floor(game.prizePool * (game.winningPercentage / 100));
           } catch (error) {
             await client.query('ROLLBACK');
             logger.error(`Error awarding win to remaining player in game ${gameId}:`, error);
@@ -1345,8 +1353,8 @@ class BingoEngine {
     const game = this.activeGames.get(gameId);
     if (!game) return;
 
-    // Only resume if game was paused
-    if (!game.paused) {
+    // Only resume if game is paused and still actively playing
+    if (!game.paused || game.status !== GAME_STATES.PLAYING) {
       return;
     }
 
@@ -1612,7 +1620,7 @@ class BingoEngine {
   /**
    * Get game state (public method for checking game status)
    */
-  async getGameState(gameId) {
+  getGameState(gameId) {
     const game = this.activeGames.get(gameId);
     if (!game) return null;
     

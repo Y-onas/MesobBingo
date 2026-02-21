@@ -43,6 +43,7 @@ const CurrentCall = ({ letter, number, status, voiceEnabled, onVoiceToggle }: Cu
     if (!('speechSynthesis' in window)) return;
 
     const loadVoices = () => {
+      // Trigger Chrome's asynchronous voice list population; result unused here.
       window.speechSynthesis.getVoices();
     };
 
