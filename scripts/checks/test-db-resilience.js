@@ -132,7 +132,7 @@ async function testDbOperations() {
       } catch (error) {
         failureCount++;
         // Check if circuit breaker opened
-        if (error.message === 'Circuit breaker is OPEN') {
+        if (error.message && error.message.includes('Circuit breaker')) {
           circuitBreakerOpened = true;
           console.log(`   - Circuit breaker opened after ${failureCount} failures`);
           break;
@@ -355,5 +355,5 @@ async function runAllTests() {
 // Run tests
 runAllTests().catch(error => {
   console.error('Fatal error:', error);
-  process.exit(1);
+  closePool().finally(() => process.exit(1));
 });
