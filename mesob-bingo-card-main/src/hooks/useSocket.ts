@@ -62,7 +62,13 @@ export function useSocket(): UseSocketReturn {
 
     const emit = useCallback((event: string, data?: any) => {
         if (socketRef.current?.connected) {
+            if (import.meta.env.DEV) {
+                console.log(`[Socket] Emitting event: ${event}`, data);
+            }
             socketRef.current.emit(event, data);
+        } else {
+            const reason = socketRef.current == null ? 'no socket' : `socket state: ${socketRef.current.connected}`;
+            console.warn(`[Socket] Cannot emit ${event} - socket not connected (${reason})`);
         }
     }, []);
 

@@ -1,11 +1,14 @@
+import React from "react";
 import { Volume2, VolumeX } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useState, useEffect } from "react";
+import { useSpeechSynthesis, unlockSpeechSynthesis, cancelSpeech } from "@/hooks/useSpeechSynthesis";
 
 interface CurrentCallProps {
   letter: string;
   number: number;
   status: "playing" | "ready" | "waiting";
+  voiceEnabled: boolean;
+  onVoiceToggle: (enabled: boolean) => void;
 }
 
 const LETTER_BG: Record<string, string> = {
@@ -16,37 +19,41 @@ const LETTER_BG: Record<string, string> = {
   O: "from-[hsl(0_75%_55%)] to-[hsl(0_75%_45%)]",
 };
 
-const CurrentCall = ({ letter, number, status }: CurrentCallProps) => {
-  const [voiceEnabled, setVoiceEnabled] = useState(false);
-
-  // Auto-speak when voice is enabled and number changes
-  useEffect(() => {
-    if (voiceEnabled && 'speechSynthesis' in window) {
-      // Cancel any ongoing speech
-      window.speechSynthesis.cancel();
-      
-      const utterance = new SpeechSynthesisUtterance(`${letter} ${number}`);
-      utterance.rate = 0.9;
-      utterance.pitch = 1;
-      utterance.volume = 1;
-      
-      window.speechSynthesis.speak(utterance);
-    }
-
-    return () => {
-      if ('speechSynthesis' in window) {
-        window.speechSynthesis.cancel();
-      }
-    };
-  }, [letter, number, voiceEnabled]);
+const CurrentCall = ({ letter, number, status, voiceEnabled, onVoiceToggle }: CurrentCallProps) => {
+  const { speechSupported } = useSpeechSynthesis({
+    enabled: voiceEnabled,
+    text: `${letter} ${number}`,
+  });
 
   const toggleVoice = () => {
-    if (voiceEnabled && 'speechSynthesis' in window) {
+    const newValue = !voiceEnabled;
+    onVoiceToggle(newValue);
+
+    if (voiceEnabled) {
       // Turning off - cancel any ongoing speech
-      window.speechSynthesis.cancel();
+      cancelSpeech();
+    } else {
+      // Turning on - unlock speech synthesis on mobile
+      unlockSpeechSynthesis();
     }
-    setVoiceEnabled(!voiceEnabled);
   };
+
+  // Load voices using addEventListener to avoid conflicts
+  React.useEffect(() => {
+    if (!('speechSynthesis' in window)) return;
+
+    const loadVoices = () => {
+      // Trigger Chrome's asynchronous voice list population; result unused here.
+      window.speechSynthesis.getVoices();
+    };
+
+    loadVoices();
+    window.speechSynthesis.addEventListener('voiceschanged', loadVoices);
+
+    return () => {
+      window.speechSynthesis.removeEventListener('voiceschanged', loadVoices);
+    };
+  }, []);
 
   return (
     <div className="glass-card p-2">
@@ -62,10 +69,13 @@ const CurrentCall = ({ letter, number, status }: CurrentCallProps) => {
         </span>
         <button 
           onClick={toggleVoice}
+          disabled={!speechSupported}
           className={cn(
             "flex items-center gap-1 transition-colors",
+            !speechSupported && "opacity-50 cursor-not-allowed",
             voiceEnabled ? "text-success" : "text-primary hover:text-primary/80"
           )}
+          title={!speechSupported ? "Speech not supported in this browser" : voiceEnabled ? "Voice On" : "Voice Off"}
         >
           {voiceEnabled ? (
             <Volume2 className="w-3 h-3 animate-pulse" />

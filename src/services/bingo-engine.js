@@ -21,6 +21,21 @@ class BingoEngine {
     this.activeGames = new Map(); // gameId → GameState
     this.callTimers = new Map();  // gameId → timer
     this.countdownTimers = new Map(); // gameId → timer
+    this.pauseTimeouts = new Map(); // gameId → timeout (for cancelling)
+    this.endingGames = new Set(); // gameId set (prevent duplicate endings)
+
+    // Metrics tracking
+    this.metrics = {
+      gamesCreated: 0,
+      gamesCompleted: 0,
+      gamesCancelled: 0,
+      gamesPaused: 0,
+      gamesResumed: 0,
+      houseWins: 0,
+      playerWins: 0,
+      totalBetsCollected: 0,
+      totalPayouts: 0
+    };
 
     // Cleanup finished games every 5 minutes
     this._cleanupInterval = setInterval(() => this.cleanupFinished(), 300000);
@@ -204,7 +219,12 @@ class BingoEngine {
     }
 
     this.activeGames.set(dbGame.id, gameState);
-    logger.info(`Game created: ${dbGame.id} for room ${room.id} (${room.name})`);
+    this.metrics.gamesCreated++;
+    logger.logGameEvent('game_created', dbGame.id, {
+      roomId: room.id,
+      roomName: room.name,
+      entryFee: room.entryFee
+    });
 
     return gameState;
   }
@@ -439,7 +459,7 @@ class BingoEngine {
    */
   async _callNumber(gameId) {
     const game = this.activeGames.get(gameId);
-    if (!game || game.status !== GAME_STATES.PLAYING) return;
+    if (!game || game.status !== GAME_STATES.PLAYING || game.paused) return;
 
     // All numbers called — no winner
     if (game.calledSet.size >= 75) {
@@ -453,22 +473,55 @@ class BingoEngine {
       number = crypto.randomInt(1, 76);
     } while (game.calledSet.has(number));
 
-    // Update in-memory
+    // Update in-memory FIRST (before DB)
     game.calledNumbers.push(number);
     game.calledSet.add(number);
 
-    // Persist to DB
-    await db.insert(calledNumbers).values({
-      gameId,
-      number,
-      callOrder: game.calledNumbers.length,
-    }).catch(err => logger.error('Error persisting called number:', err));
+    try {
+      // Persist to DB with retry logic
+      await this._retryDbOperation(async () => {
+        await db.insert(calledNumbers).values({
+          gameId,
+          number,
+          callOrder: game.calledNumbers.length,
+        });
+      }, 'persisting called number');
 
-    // Update total calls in game
-    await db.update(games)
-      .set({ totalCalls: game.calledNumbers.length })
-      .where(eq(games.id, gameId))
-      .catch(err => logger.error('Error updating total calls:', err));
+      // Update total calls in game with retry logic
+      await this._retryDbOperation(async () => {
+        await db.update(games)
+          .set({ totalCalls: game.calledNumbers.length })
+          .where(eq(games.id, gameId));
+      }, 'updating total calls');
+
+    } catch (dbError) {
+      // CRITICAL: DB write failed after retries - rollback in-memory state
+      logger.error(`CRITICAL: Failed to persist number ${number} for game ${gameId} after retries. Rolling back in-memory state.`, dbError);
+      
+      // Rollback in-memory changes
+      game.calledNumbers.pop();
+      game.calledSet.delete(number);
+      
+      // Pause the game to prevent further inconsistency
+      logger.error(`Pausing game ${gameId} due to database write failure`);
+      game.paused = true;
+      game.pausedAt = Date.now();
+      this.metrics.gamesPaused++;
+      
+      // Notify players
+      this._broadcastToGame(gameId, 'game_paused', {
+        reason: 'Database error - game paused for safety',
+        message: 'The game has been paused due to a technical issue. Please wait while we resolve this.'
+      });
+      
+      // Stop the game loop
+      this._stopTimers(gameId);
+      
+      // Sync connection manager so reconnecting players can trigger resumeGame
+      this.connectionManager.setGamePaused(gameId, true);
+      
+      return; // Don't broadcast the number or schedule next call
+    }
 
     const letter = getBingoLetter(number);
 
@@ -766,8 +819,8 @@ class BingoEngine {
 
       // Mark game as completed
       await client.query(
-        'UPDATE games SET status = $1, winner_id = $2, winner_board_number = $3, finished_at = NOW() WHERE id = $4',
-        [GAME_STATES.COMPLETED, telegramId, boardNumber, gameId]
+        'UPDATE games SET status = $1, winner_id = $2, winner_board_number = $3, prize_per_winner = $4, finished_at = NOW() WHERE id = $5',
+        [GAME_STATES.COMPLETED, telegramId, boardNumber, winAmount, gameId]
       );
 
       // Update in-memory
@@ -804,6 +857,7 @@ class BingoEngine {
 
     } catch (error) {
       logger.error('Error awarding win to remaining player:', error);
+      throw error; // Let the caller manage ROLLBACK
     }
   }
 
@@ -928,7 +982,15 @@ class BingoEngine {
         });
       }
 
-      logger.info(`Game ${gameId} completed with ${winnerCount} winner(s) — ${prizePerWinner} Birr each`);
+      this.metrics.playerWins += winnerCount;
+      this.metrics.gamesCompleted++;
+      this.metrics.totalPayouts += (prizePerWinner * winnerCount);
+      
+      logger.logGameEvent('game_completed', gameId, {
+        winnerCount,
+        prizePerWinner,
+        totalPayout: prizePerWinner * winnerCount
+      });
 
       // Cleanup after delay
       setTimeout(() => {
@@ -952,9 +1014,58 @@ class BingoEngine {
     const game = this.activeGames.get(gameId);
     if (!game) return;
 
-    // Can only leave before game starts playing
+    // During play - treat like abandoning the game (lose entry fee)
     if (game.status === GAME_STATES.PLAYING) {
-      // During play, just disconnect from room but don't refund
+      // Remove player from game (no refund - penalty for leaving)
+      // NOTE: Player removal is in-memory only during active gameplay.
+      // game_players table is not updated here - it serves as a historical record
+      // of who joined the game. In-memory state is the source of truth during play.
+      if (game.players.has(telegramId)) {
+        game.players.delete(telegramId);
+        game.playerBoards.delete(telegramId);
+        game.playerCount--;
+
+        logger.info(`Player ${telegramId} left game ${gameId} during play (no refund)`);
+
+        // Broadcast player left
+        this._broadcastToGame(gameId, 'player_left', {
+          playerCount: game.playerCount,
+          totalPot: Math.floor(game.prizePool * (game.winningPercentage / 100)),
+        });
+
+        // Check if all players left
+        if (game.playerCount === 0) {
+          logger.info(`All players left game ${gameId} during play. Ending game.`);
+          await this._endGameNoWinner(gameId);
+        } else if (game.playerCount === 1) {
+          // Only 1 player remains - they win automatically
+          const remainingPlayerId = Array.from(game.players)[0];
+          const boardNumber = game.playerBoards.get(remainingPlayerId);
+          logger.info(`Only 1 player remains in game ${gameId}. Player ${remainingPlayerId} wins automatically.`);
+          
+          // Award win to remaining player with transaction
+          const client = await pool.connect();
+          try {
+            await client.query('BEGIN');
+            await this._awardWinToRemainingPlayer(client, game, remainingPlayerId, boardNumber, gameId);
+            await client.query('COMMIT');
+            // Note: _awardWinToRemainingPlayer already broadcasts game_won
+            
+            // Update metrics
+            this.metrics.playerWins++;
+            this.metrics.gamesCompleted++;
+            this.metrics.totalPayouts += Math.floor(game.prizePool * (game.winningPercentage / 100));
+          } catch (error) {
+            await client.query('ROLLBACK');
+            logger.error(`Error awarding win to remaining player in game ${gameId}:`, error);
+            // Fallback: end game without winner
+            await this._endGameNoWinner(gameId);
+          } finally {
+            client.release();
+          }
+        }
+      }
+
       this.connectionManager.leaveGame(socketId);
       return;
     }
@@ -1015,6 +1126,12 @@ class BingoEngine {
       playerCount: game.playerCount,
       totalPot: Math.floor(game.prizePool * (game.winningPercentage / 100)),
     });
+
+    // Check if all players left during lobby/countdown
+    if (game.playerCount === 0 && [GAME_STATES.LOBBY, GAME_STATES.COUNTDOWN].includes(game.status)) {
+      logger.info(`All players left game ${gameId} during ${game.status}. Cancelling game.`);
+      await this._cancelGame(gameId, 'All players left');
+    }
   }
 
   /**
@@ -1088,9 +1205,10 @@ class BingoEngine {
 
     this._broadcastToGame(gameId, 'game_ended', { reason });
 
-    setTimeout(() => this._cleanupGame(gameId), 10000);
+    this.metrics.gamesCancelled++;
+    logger.logGameEvent('game_cancelled', gameId, { reason });
 
-    logger.info(`Game ${gameId} cancelled: ${reason}`);
+    setTimeout(() => this._cleanupGame(gameId), 10000);
   }
 
   /**
@@ -1135,6 +1253,254 @@ class BingoEngine {
     setTimeout(() => this._cleanupGame(gameId), 10000);
   }
 
+  /**
+   * Get winner information for a completed game
+   * @param {number} gameId
+   * @returns {Promise<{winnerName: string, winAmount: number}|null>}
+   */
+  async getGameWinner(gameId) {
+    try {
+      const result = await pool.query(
+        `SELECT 
+          g.winner_id,
+          g.prize_per_winner as win_amount,
+          u.first_name,
+          u.last_name,
+          u.username
+         FROM games g
+         LEFT JOIN users u ON u.telegram_id = g.winner_id
+         WHERE g.id = $1 AND g.winner_id IS NOT NULL
+         LIMIT 1`,
+        [gameId]
+      );
+
+      if (result.rows.length > 0) {
+        const row = result.rows[0];
+        // Build winner name from available fields
+        const winnerName = row.first_name 
+          ? `${row.first_name}${row.last_name ? ' ' + row.last_name : ''}`
+          : row.username || `User ${row.winner_id}`;
+        
+        return {
+          winnerName,
+          winAmount: parseFloat(row.win_amount || 0)
+        };
+      }
+      return null;
+    } catch (error) {
+      logger.error(`Error getting winner for game ${gameId}:`, error);
+      return null;
+    }
+  }
+
+  /**
+   * Pause game when all players disconnect
+   * Stops number calling but keeps game state
+   * @param {number} gameId
+   */
+  async pauseGame(gameId) {
+    const game = this.activeGames.get(gameId);
+    if (!game) return;
+
+    // Only pause if game is actively playing
+    if (game.status !== GAME_STATES.PLAYING) {
+      return;
+    }
+
+    // Already paused
+    if (game.paused) {
+      logger.debug(`Game ${gameId} is already paused`);
+      return;
+    }
+
+    logger.logGameEvent('game_paused', gameId, {
+      playerCount: game.playerCount,
+      calledNumbers: game.calledNumbers.length
+    });
+    
+    // Stop number calling timer
+    this._stopTimers(gameId);
+    
+    // Mark game as paused (but keep it in PLAYING state for reconnection)
+    game.paused = true;
+    game.pausedAt = Date.now();
+    this.metrics.gamesPaused++;
+    
+    // Update connection manager
+    this.connectionManager.setGamePaused(gameId, true);
+    
+    // Persist pause state to database
+    try {
+      await db.update(games)
+        .set({ 
+          paused: true,
+          pausedAt: new Date()
+        })
+        .where(eq(games.id, gameId));
+    } catch (error) {
+      logger.error(`Error persisting pause state for game ${gameId}:`, error);
+    }
+    
+    logger.info(`Game ${gameId} paused. Waiting for players to reconnect.`);
+  }
+
+  /**
+   * Resume game when players reconnect
+   * Restarts number calling and cancels any pending timeout
+   * @param {number} gameId
+   */
+  async resumeGame(gameId) {
+    const game = this.activeGames.get(gameId);
+    if (!game) return;
+
+    // Only resume if game is paused and still actively playing
+    if (!game.paused || game.status !== GAME_STATES.PLAYING) {
+      return;
+    }
+
+    const pauseDuration = Date.now() - game.pausedAt;
+    logger.logGameEvent('game_resumed', gameId, {
+      pauseDurationMs: pauseDuration,
+      playerCount: game.playerCount
+    });
+    
+    // Cancel any pending house win timeout
+    const pauseTimeout = this.pauseTimeouts.get(gameId);
+    if (pauseTimeout) {
+      clearTimeout(pauseTimeout);
+      this.pauseTimeouts.delete(gameId);
+      logger.debug(`Cancelled house win timeout for game ${gameId}`);
+    }
+    
+    // Clear pause state
+    game.paused = false;
+    delete game.pausedAt;
+    this.metrics.gamesResumed++;
+    
+    // Update connection manager
+    this.connectionManager.setGamePaused(gameId, false);
+    
+    // Persist resume state to database
+    try {
+      await db.update(games)
+        .set({ 
+          paused: false,
+          pausedAt: null
+        })
+        .where(eq(games.id, gameId));
+    } catch (error) {
+      logger.error(`Error persisting resume state for game ${gameId}:`, error);
+    }
+    
+    // Resume number calling
+    this._scheduleNextCall(gameId);
+    
+    logger.info(`Game ${gameId} resumed after ${Math.round(pauseDuration / 1000)}s pause`);
+  }
+
+  /**
+   * End game when all players disconnect and don't reconnect within grace period
+   * House wins - no refunds issued
+   * @param {number} gameId
+   */
+  async endGameHouseWins(gameId) {
+    // Idempotency check - prevent duplicate calls
+    if (this.endingGames.has(gameId)) {
+      logger.debug(`Game ${gameId} is already being ended, skipping duplicate call`);
+      return;
+    }
+
+    const game = this.activeGames.get(gameId);
+    if (!game) {
+      logger.debug(`Game ${gameId} not found, may have already ended`);
+      return;
+    }
+
+    // Check if game is already completed
+    if (game.status === GAME_STATES.COMPLETED || game.status === GAME_STATES.CANCELLED) {
+      logger.debug(`Game ${gameId} already ended with status ${game.status}`);
+      return;
+    }
+
+    // Mark as ending
+    this.endingGames.add(gameId);
+
+    try {
+      // Verify no players are connected
+      const connectedPlayers = this.connectionManager.getGamePlayerCount(gameId);
+      if (connectedPlayers > 0) {
+        logger.debug(`Game ${gameId} has ${connectedPlayers} connected players, not ending`);
+        this.endingGames.delete(gameId);
+        return;
+      }
+
+      this.metrics.houseWins++;
+      this.metrics.gamesCompleted++;
+      this.metrics.totalBetsCollected += game.prizePool;
+      
+      logger.logGameEvent('house_wins', gameId, {
+        prizePool: game.prizePool,
+        playerCount: game.players.size,
+        calledNumbers: game.calledNumbers.length
+      });
+      
+      this._stopTimers(gameId);
+      
+      // Clear any pause timeout
+      const pauseTimeout = this.pauseTimeouts.get(gameId);
+      if (pauseTimeout) {
+        clearTimeout(pauseTimeout);
+        this.pauseTimeouts.delete(gameId);
+      }
+      
+      game.status = GAME_STATES.COMPLETED;
+
+      // NO REFUNDS - House keeps the money
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+
+        // Mark game as completed with house win
+        await client.query(
+          `UPDATE games 
+           SET status = $1, 
+               finished_at = NOW(),
+               notes = 'House win - all players disconnected and did not reconnect within grace period',
+               paused = false,
+               paused_at = NULL
+           WHERE id = $2`,
+          [GAME_STATES.COMPLETED, gameId]
+        );
+
+        await client.query('COMMIT');
+        logger.info(`Game ${gameId} ended. House wins ${game.prizePool}. No refunds issued to ${game.players.size} players.`);
+      } catch (error) {
+        await client.query('ROLLBACK');
+        logger.error(`Error ending abandoned game ${gameId}:`, error);
+        throw error;
+      } finally {
+        client.release();
+      }
+
+      // Clean up game from memory
+      this._cleanupGame(gameId);
+    } finally {
+      // Always remove from ending set
+      this.endingGames.delete(gameId);
+    }
+  }
+
+  /**
+   * DEPRECATED - DO NOT USE
+   * This function is kept for reference but should NOT be called
+   * Players disconnecting should NEVER trigger refunds
+   */
+  async endGameAllPlayersLeft(gameId) {
+    logger.warn(`endGameAllPlayersLeft called for game ${gameId} - THIS FUNCTION IS DEPRECATED`);
+    logger.warn(`Use endGameHouseWins instead - no refunds should be issued`);
+    return; // Do nothing
+  }
+
   // ═══════════════════════════════════════════════════════════════════
   // HELPERS
   // ═══════════════════════════════════════════════════════════════════
@@ -1161,6 +1527,12 @@ class BingoEngine {
       clearInterval(countdownTimer);
       this.countdownTimers.delete(gameId);
     }
+
+    const pauseTimeout = this.pauseTimeouts.get(gameId);
+    if (pauseTimeout) {
+      clearTimeout(pauseTimeout);
+      this.pauseTimeouts.delete(gameId);
+    }
   }
 
   /**
@@ -1174,13 +1546,25 @@ class BingoEngine {
 
   /**
    * Clean up all finished games older than 5 minutes
+   * Also cleanup abandoned paused games older than 10 minutes
    */
   cleanupFinished() {
     const now = Date.now();
     for (const [gameId, game] of this.activeGames) {
+      // Cleanup completed/cancelled games older than 5 minutes
       if ([GAME_STATES.COMPLETED, GAME_STATES.CANCELLED].includes(game.status)) {
         if (now - game.createdAt > 300000) {
           this._cleanupGame(gameId);
+        }
+      }
+      // Cleanup abandoned paused games older than 10 minutes
+      else if (game.paused && game.pausedAt) {
+        const pauseDuration = now - game.pausedAt;
+        if (pauseDuration > 600000) { // 10 minutes
+          logger.warn(`Cleaning up abandoned paused game ${gameId} (paused for ${Math.round(pauseDuration / 1000)}s)`);
+          this.endGameHouseWins(gameId).catch(err =>
+            logger.error(`Error ending abandoned paused game ${gameId}:`, err)
+          );
         }
       }
     }
@@ -1234,6 +1618,54 @@ class BingoEngine {
   }
 
   /**
+   * Get game state (public method for checking game status)
+   */
+  getGameState(gameId) {
+    const game = this.activeGames.get(gameId);
+    if (!game) return null;
+    
+    return {
+      id: gameId,
+      status: game.status,
+      playerCount: game.playerCount,
+      calledNumbers: game.calledNumbers,
+    };
+  }
+
+  /**
+   * Get engine stats for monitoring
+   */
+  getStats() {
+    return {
+      metrics: { ...this.metrics },
+      memory: {
+        activeGames: this.activeGames.size,
+        callTimers: this.callTimers.size,
+        countdownTimers: this.countdownTimers.size,
+        pauseTimeouts: this.pauseTimeouts.size,
+        endingGames: this.endingGames.size
+      }
+    };
+  }
+
+  /**
+   * Reset metrics (for testing or periodic reset)
+   */
+  resetMetrics() {
+    this.metrics = {
+      gamesCreated: 0,
+      gamesCompleted: 0,
+      gamesCancelled: 0,
+      gamesPaused: 0,
+      gamesResumed: 0,
+      houseWins: 0,
+      playerWins: 0,
+      totalBetsCollected: 0,
+      totalPayouts: 0
+    };
+  }
+
+  /**
    * Destroy engine (for shutdown)
    */
   destroy() {
@@ -1242,6 +1674,35 @@ class BingoEngine {
       this._stopTimers(gameId);
     }
     this.activeGames.clear();
+  }
+
+  /**
+   * Retry database operations with exponential backoff
+   * @param {Function} operation - Async function to retry
+   * @param {string} operationName - Name for logging
+   * @param {number} maxRetries - Maximum retry attempts (default: 3)
+   * @throws {Error} Throws the last error if all retries fail
+   */
+  async _retryDbOperation(operation, operationName, maxRetries = 3) {
+    let lastError;
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        await operation();
+        if (attempt > 1) {
+          logger.info(`${operationName} succeeded on attempt ${attempt}`);
+        }
+        return;
+      } catch (err) {
+        lastError = err;
+        if (attempt < maxRetries) {
+          const delayMs = Math.min(1000 * Math.pow(2, attempt - 1), 5000); // Max 5s
+          logger.warn(`Error ${operationName} (attempt ${attempt}/${maxRetries}), retrying in ${delayMs}ms:`, err.message);
+          await new Promise(resolve => setTimeout(resolve, delayMs));
+        }
+      }
+    }
+    logger.error(`Error ${operationName} after ${maxRetries} attempts:`, lastError);
+    throw lastError; // Propagate error to caller
   }
 }
 

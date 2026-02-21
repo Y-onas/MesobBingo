@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import LobbyScreen from "@/screens/LobbyScreen";
 import BoardSelectionScreen from "@/screens/BoardSelectionScreen";
 import GamePlayScreen from "@/screens/GamePlayScreen";
@@ -38,6 +38,28 @@ const SOCKET_EVENTS = {
 const Index = () => {
   const { status, emit, on, off } = useSocket();
   const { state, dispatch } = useGameState();
+  
+  // Voice state at parent level to persist across renders
+  const [voiceEnabled, setVoiceEnabled] = useState(() => {
+    const saved = localStorage.getItem('bingoVoiceEnabled');
+    const initialValue = saved === 'true';
+    if (import.meta.env.DEV) {
+      console.log('Index.tsx - Initial voice state from localStorage:', saved, '-> boolean:', initialValue);
+    }
+    return initialValue;
+  });
+
+  // Persist voice preference whenever it changes
+  useEffect(() => {
+    try {
+      localStorage.setItem('bingoVoiceEnabled', String(voiceEnabled));
+      if (import.meta.env.DEV) {
+        console.log('Index.tsx - Voice state persisted to localStorage:', voiceEnabled);
+      }
+    } catch (e) {
+      console.error('Failed to save voice setting to localStorage', e);
+    }
+  }, [voiceEnabled]);
 
   // ─── Wire socket events to game state ───────────────────────────
   useEffect(() => {
@@ -57,7 +79,12 @@ const Index = () => {
       [SOCKET_EVENTS.GAME_ENDED]: (data: any) => dispatch({ type: 'GAME_ENDED', data }),
       [SOCKET_EVENTS.PLAYER_JOINED]: (data: any) => dispatch({ type: 'PLAYER_JOINED', data }),
       [SOCKET_EVENTS.PLAYER_LEFT]: (data: any) => dispatch({ type: 'PLAYER_LEFT', data }),
-      [SOCKET_EVENTS.BALANCE_UPDATE]: (data: any) => dispatch({ type: 'BALANCE_UPDATE', data }),
+      [SOCKET_EVENTS.BALANCE_UPDATE]: (data: any) => {
+        if (import.meta.env.DEV) {
+          console.log('BALANCE_UPDATE received:', data);
+        }
+        dispatch({ type: 'BALANCE_UPDATE', data });
+      },
       [SOCKET_EVENTS.FORCE_LEAVE_GAME]: (data: any) => {
         // Player was removed from game - show error and go to lobby
         dispatch({ type: 'SET_ERROR', error: data.message });
@@ -141,12 +168,17 @@ const Index = () => {
   };
 
   const handleRefreshBalance = () => {
+    if (import.meta.env.DEV) {
+      console.log('handleRefreshBalance called - emitting GET_BALANCE');
+    }
     emit(SOCKET_EVENTS.GET_BALANCE);
   };
 
   const handleRefreshGame = () => {
     // Refresh balance and check for active game (reconnect if needed)
-    console.log('Refresh button clicked - emitting GET_BALANCE and CHECK_ACTIVE_GAME');
+    if (import.meta.env.DEV) {
+      console.log('Refresh button clicked - emitting GET_BALANCE and CHECK_ACTIVE_GAME');
+    }
     emit(SOCKET_EVENTS.GET_BALANCE);
     emit(SOCKET_EVENTS.CHECK_ACTIVE_GAME);
   };
@@ -202,6 +234,8 @@ const Index = () => {
           onClaimBingo={handleClaimBingo}
           onRefreshBalance={handleRefreshGame}
           onLeave={handleLeaveGame}
+          voiceEnabled={voiceEnabled}
+          onVoiceToggle={setVoiceEnabled}
         />
       )}
 

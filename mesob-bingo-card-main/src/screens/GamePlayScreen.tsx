@@ -1,6 +1,7 @@
 import { RefreshCw, LogOut, Volume2, VolumeX } from "lucide-react";
-import React from "react";
+import { useState, useEffect, useCallback } from "react";
 import type { GameState } from "@/hooks/useGameState";
+import { useSpeechSynthesis, unlockSpeechSynthesis, cancelSpeech } from "@/hooks/useSpeechSynthesis";
 
 interface GamePlayScreenProps {
   game: GameState;
@@ -12,6 +13,8 @@ interface GamePlayScreenProps {
   onClaimBingo: () => void;
   onRefreshBalance: () => void;
   onLeave?: () => void;
+  voiceEnabled: boolean;
+  onVoiceToggle: (enabled: boolean) => void;
 }
 
 const BINGO_LETTERS = ['B', 'I', 'N', 'G', 'O'];
@@ -41,13 +44,41 @@ const GamePlayScreen = ({
   onClaimBingo,
   onRefreshBalance,
   onLeave,
+  voiceEnabled,
+  onVoiceToggle,
 }: GamePlayScreenProps) => {
-  const [isRefreshing, setIsRefreshing] = React.useState(false);
-  const [soundOn, setSoundOn] = React.useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   
   const calledNumbers = game.calledNumbers || [];
   const calledSet = new Set(calledNumbers);
   const effectiveMarks = Array.from(markedNumbers);
+
+  // Use speech synthesis hook
+  const { speechSupported } = useSpeechSynthesis({
+    enabled: voiceEnabled,
+    text: game.currentCall ? `${game.currentCall.letter} ${game.currentCall.number}` : '',
+  });
+
+  const toggleVoice = useCallback(() => {
+    const newValue = !voiceEnabled;
+    if (import.meta.env.DEV) {
+      console.log('Toggle voice clicked - Current:', voiceEnabled, 'New:', newValue);
+    }
+    
+    // Update state via parent first so UI responds immediately
+    onVoiceToggle(newValue);
+    if (import.meta.env.DEV) {
+      console.log('Called onVoiceToggle with:', newValue);
+    }
+    
+    if (voiceEnabled) {
+      // Turning off - cancel any ongoing speech
+      cancelSpeech();
+    } else {
+      // Turning on - unlock speech synthesis on mobile
+      unlockSpeechSynthesis();
+    }
+  }, [voiceEnabled, speechSupported, onVoiceToggle]);
 
   const handleRefresh = () => {
     setIsRefreshing(true);
@@ -135,7 +166,7 @@ const GamePlayScreen = ({
 
         {/* Right: Current Call + Board */}
         <div className="flex flex-col gap-3">
-          {/* Current Call */}
+          {/* Current Call - Beautiful design with voice */}
           <div 
             className="rounded-lg p-3 border transition-colors"
             style={{ 
@@ -164,12 +195,29 @@ const GamePlayScreen = ({
               >
                 {game.status === 'playing' ? 'Playing' : game.status === 'countdown' ? 'Ready' : 'Waiting'}
               </span>
-              <button
-                onClick={() => setSoundOn(!soundOn)}
-                className="text-muted-foreground hover:text-foreground transition-colors"
-              >
-                {soundOn ? <Volume2 size={14} /> : <VolumeX size={14} />}
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={toggleVoice}
+                  disabled={!speechSupported}
+                  type="button"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-card border border-border transition-all disabled:opacity-50 disabled:cursor-not-allowed hover:bg-accent hover:border-accent-foreground active:scale-95 cursor-pointer"
+                  title={!speechSupported ? "Speech not supported" : voiceEnabled ? "Voice On - Click to turn off" : "Voice Off - Click to turn on"}
+                  style={{ touchAction: 'manipulation' }}
+                  data-voice-enabled={voiceEnabled}
+                >
+                  {voiceEnabled ? (
+                    <>
+                      <Volume2 size={16} className="text-success animate-pulse" />
+                      <span className="text-xs font-semibold text-success">ON</span>
+                    </>
+                  ) : (
+                    <>
+                      <VolumeX size={16} className="text-muted-foreground" />
+                      <span className="text-xs font-semibold text-muted-foreground">OFF</span>
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
 
             <div className="flex items-center justify-between mb-3">

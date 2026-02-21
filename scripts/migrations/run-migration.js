@@ -1,5 +1,5 @@
-const { neon } = require('@neondatabase/serverless');
 require('dotenv').config();
+const { neon } = require('@neondatabase/serverless');
 
 if (!process.env.DATABASE_URL) {
   console.error('❌ DATABASE_URL environment variable is not set');
