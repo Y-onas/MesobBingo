@@ -93,6 +93,12 @@ router.patch('/:id/deactivate', async (req, res) => {
 
     const targetId = parseInt(req.params.id);
 
+    // Prevent self-deactivation
+    const [target] = await db.select().from(admins).where(eq(admins.id, targetId));
+    if (target && String(target.telegramId) === String(requesterId)) {
+      return res.status(400).json({ error: 'Cannot deactivate your own account' });
+    }
+
     const [updated] = await db.update(admins)
       .set({ isActive: false })
       .where(eq(admins.id, targetId))

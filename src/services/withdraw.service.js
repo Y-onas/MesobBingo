@@ -28,7 +28,7 @@ const createWithdrawal = async (telegramId, amount, method, accountNumber, accou
       throw new Error('Withdrawals are temporarily disabled');
     }
 
-    const MIN_WITHDRAW = await configService.get('min_withdraw', 150);
+    const MIN_WITHDRAW = Number(await configService.get('min_withdraw', 150));
 
     // Lock user row for update
     const { rows: [user] } = await client.query(
@@ -87,69 +87,95 @@ const createWithdrawal = async (telegramId, amount, method, accountNumber, accou
 
 /**
  * Complete a withdrawal
+ * Uses transaction to ensure atomicity - prevents stat update failure
  */
 const completeWithdrawal = async (withdrawalId, adminId) => {
+  const client = await pool.connect();
   try {
+    await client.query('BEGIN');
+
     // Atomic update: only complete if status is pending or under_review
-    const [updated] = await db.update(withdrawals)
-      .set({
-        status: 'approved',
-        processedBy: adminId,
-        processedAt: new Date(),
-      })
-      .where(sql`${withdrawals.id} = ${withdrawalId} AND ${withdrawals.status} IN ('pending', 'under_review')`)
-      .returning();
+    const { rows: [updated] } = await client.query(
+      `UPDATE withdrawals 
+       SET status = 'approved', 
+           processed_by = $1, 
+           processed_at = NOW()
+       WHERE id = $2 
+         AND status IN ('pending', 'under_review')
+       RETURNING *`,
+      [adminId, withdrawalId]
+    );
 
     if (!updated) {
+      await client.query('ROLLBACK');
       throw new Error('Withdrawal not found or already processed');
     }
 
     // Update user's total withdrawn
-    await db.update(users)
-      .set({ totalWithdrawn: sql`${users.totalWithdrawn} + ${Number(updated.amount)}` })
-      .where(eq(users.telegramId, updated.telegramId));
+    await client.query(
+      `UPDATE users 
+       SET total_withdrawn = total_withdrawn + $1
+       WHERE telegram_id = $2`,
+      [updated.amount, updated.telegram_id]
+    );
 
+    await client.query('COMMIT');
     logger.info(`Withdrawal completed: ${withdrawalId} by admin ${adminId}`);
     return updated;
   } catch (error) {
+    await client.query('ROLLBACK');
     logger.error('Error completing withdrawal:', error);
     throw error;
+  } finally {
+    client.release();
   }
 };
 
 /**
  * Reject a withdrawal (refund)
+ * Uses transaction to ensure atomicity - prevents fund loss if refund fails
  */
 const rejectWithdrawal = async (withdrawalId, adminId, reason = 'Rejected') => {
+  const client = await pool.connect();
   try {
+    await client.query('BEGIN');
+
     // Atomic update: only reject if status is pending or under_review
-    const [updated] = await db.update(withdrawals)
-      .set({
-        status: 'rejected',
-        processedBy: adminId,
-        processedAt: new Date(),
-        rejectionReason: reason,
-      })
-      .where(sql`${withdrawals.id} = ${withdrawalId} AND ${withdrawals.status} IN ('pending', 'under_review')`)
-      .returning();
+    const { rows: [updated] } = await client.query(
+      `UPDATE withdrawals 
+       SET status = 'rejected', 
+           processed_by = $1, 
+           processed_at = NOW(), 
+           rejection_reason = $2
+       WHERE id = $3 
+         AND status IN ('pending', 'under_review')
+       RETURNING *`,
+      [adminId, reason, withdrawalId]
+    );
 
     if (!updated) {
+      await client.query('ROLLBACK');
       throw new Error('Withdrawal not found or already processed');
     }
 
     // Refund the amount to withdrawable balance (and legacy main_wallet)
-    await db.update(users)
-      .set({
-        withdrawableBalance: sql`${users.withdrawableBalance} + ${Number(updated.amount)}`,
-        mainWallet: sql`${users.mainWallet} + ${Number(updated.amount)}`,
-      })
-      .where(eq(users.telegramId, updated.telegramId));
+    await client.query(
+      `UPDATE users 
+       SET withdrawable_balance = withdrawable_balance + $1,
+           main_wallet = main_wallet + $1
+       WHERE telegram_id = $2`,
+      [updated.amount, updated.telegram_id]
+    );
 
+    await client.query('COMMIT');
     logger.info(`Withdrawal rejected and refunded: ${withdrawalId} by admin ${adminId}`);
     return updated;
   } catch (error) {
+    await client.query('ROLLBACK');
     logger.error('Error rejecting withdrawal:', error);
     throw error;
+  } finally {
+    client.release();
   }
 };
 

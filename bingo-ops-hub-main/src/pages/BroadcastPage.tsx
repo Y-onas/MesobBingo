@@ -133,9 +133,11 @@ export default function BroadcastPage() {
             onChange={(e) => setMessage(e.target.value)}
             placeholder="Type your broadcast message here...&#10;&#10;You can use:&#10;- Emojis 🎉&#10;- Multiple lines&#10;- Markdown formatting"
             className="w-full h-48 px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+            maxLength={imageUrl ? 1024 : 4096}
           />
-          <p className="text-sm text-gray-500 mt-1">
-            {message.length} characters
+          <p className={`text-sm mt-1 ${message.length > (imageUrl ? 900 : 3800) ? 'text-orange-600 font-medium' : 'text-gray-500'}`}>
+            {message.length} / {imageUrl ? '1024' : '4096'} characters
+            {imageUrl && message.length > 900 && ' (caption limit)'}
           </p>
         </div>
 

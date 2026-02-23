@@ -3,6 +3,7 @@ const { systemConfig } = require('../../src/database/schema');
 const { eq } = require('drizzle-orm');
 
 async function addBotUsernameConfig() {
+  let exitCode = 0;
   try {
     console.log('Adding bot_username to system config...');
 
@@ -32,9 +33,9 @@ async function addBotUsernameConfig() {
     console.log('⚠️  IMPORTANT: Set bot_username in Dashboard → Settings page');
   } catch (error) {
     console.error('❌ Error adding bot_username config:', error);
-    throw error;
+    exitCode = 1;
   } finally {
-    process.exit(0);
+    process.exit(exitCode);
   }
 }
 

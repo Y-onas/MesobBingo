@@ -37,6 +37,11 @@ router.get('/', async (req, res) => {
       telegram_id: String(u.telegramId),
       username: u.username || u.firstName || `User ${u.telegramId}`,
       phone: u.phone || '',
+      // New balance system
+      withdrawable_balance: Number(u.withdrawableBalance || 0),
+      playing_balance: Number(u.playingBalance || 0),
+      total_winnings: Number(u.totalWinnings || 0),
+      // Legacy fields (kept for backward compatibility)
       main_wallet: Number(u.mainWallet),
       bonus_wallet: Number(u.playWallet),
       total_deposited: Number(u.totalDeposited),
@@ -71,6 +76,11 @@ router.get('/:telegramId', async (req, res) => {
       telegram_id: String(user.telegramId),
       username: user.username || user.firstName || `User ${user.telegramId}`,
       phone: user.phone || '',
+      // New balance system
+      withdrawable_balance: Number(user.withdrawableBalance || 0),
+      playing_balance: Number(user.playingBalance || 0),
+      total_winnings: Number(user.totalWinnings || 0),
+      // Legacy fields (kept for backward compatibility)
       main_wallet: Number(user.mainWallet),
       bonus_wallet: Number(user.playWallet),
       total_deposited: Number(user.totalDeposited),

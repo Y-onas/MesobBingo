@@ -15,10 +15,10 @@ const router = express.Router();
  */
 router.post('/', jwtAuthMiddleware, async (req, res) => {
   try {
-    // Check admin role
+    // Check admin role - super_admin, admin, and support_admin can broadcast
     const adminRole = req.adminRole || await getAdminRole(req.adminId);
-    if (!['super_admin', 'support_admin'].includes(adminRole)) {
-      return res.status(403).json({ error: 'Insufficient permissions. Only super_admin and support_admin can broadcast.' });
+    if (!['super_admin', 'admin', 'support_admin'].includes(adminRole)) {
+      return res.status(403).json({ error: 'Insufficient permissions. Only super_admin, admin, and support_admin can broadcast.' });
     }
 
     const { message, audience, buttonType, imageUrl } = req.body;

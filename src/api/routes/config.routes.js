@@ -12,9 +12,22 @@ const logger = require('../../utils/logger');
 const router = Router();
 
 /**
+ * Helper: Verify user has admin role
+ */
+const requireAdmin = (req, res) => {
+  if (!req.adminRole) {
+    res.status(403).json({ error: 'Forbidden — admin role required' });
+    return false;
+  }
+  return true;
+};
+
+/**
  * GET /api/configs — List all configs
  */
 router.get('/', async (req, res) => {
+  if (!requireAdmin(req, res)) return;
+  
   try {
     const configs = await configService.getAll();
     res.json(configs);
@@ -83,6 +96,8 @@ router.post('/:key/rollback', async (req, res) => {
  * GET /api/configs/:key/history — Get config change history
  */
 router.get('/:key/history', async (req, res) => {
+  if (!requireAdmin(req, res)) return;
+  
   try {
     const { key } = req.params;
     const history = await configService.getHistory(key);
@@ -99,6 +114,8 @@ router.get('/:key/history', async (req, res) => {
  * GET /api/configs/referral-tiers — List all referral tiers
  */
 router.get('/referral-tiers/list', async (req, res) => {
+  if (!requireAdmin(req, res)) return;
+  
   try {
     const tiers = await configService.getReferralTiers();
     res.json(tiers);
@@ -150,6 +167,8 @@ router.delete('/referral-tiers/:id', async (req, res) => {
  * GET /api/configs/payment-accounts — List all payment accounts
  */
 router.get('/payment-accounts/list', async (req, res) => {
+  if (!requireAdmin(req, res)) return;
+  
   try {
     const accounts = await configService.getPaymentAccounts();
     res.json(accounts);

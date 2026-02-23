@@ -29,7 +29,10 @@ router.post('/login', loginLimiter, async (req, res) => {
       return res.status(400).json({ error: 'Telegram ID is required' });
     }
 
-    const telegramIdNum = parseInt(telegramId);
+    const telegramIdNum = Number(telegramId);
+    if (!Number.isSafeInteger(telegramIdNum) || telegramIdNum <= 0) {
+      return res.status(400).json({ error: 'Telegram ID must be a valid positive number' });
+    }
 
     // Check admin status from database
     const adminIsValid = await isAdmin(telegramIdNum);
@@ -113,7 +116,11 @@ router.post('/verify-admin', loginLimiter, async (req, res) => {
       return res.status(400).json({ error: 'Telegram ID is required' });
     }
 
-    const telegramIdNum = parseInt(telegramId);
+    const telegramIdNum = Number(telegramId);
+    if (!Number.isSafeInteger(telegramIdNum) || telegramIdNum <= 0) {
+      return res.status(400).json({ error: 'Telegram ID must be a valid positive number' });
+    }
+    
     const adminIsValid = await isAdmin(telegramIdNum);
 
     if (adminIsValid) {

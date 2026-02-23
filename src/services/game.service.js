@@ -14,7 +14,6 @@ const userService = require('./user.service');
 const logger = require('../utils/logger');
 const { generateBingoNumbers, checkWin } = require('../utils/helpers');
 const configService = require('./config.service');
-const configService = require('./config.service');
 
 // In-memory game state (game sessions are ephemeral, DB not needed)
 const activeGames = new Map();

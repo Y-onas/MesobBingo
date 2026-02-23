@@ -16,6 +16,7 @@ const EventEmitter = require('events');
 
 const ROLES = {
   SUPER_ADMIN: 'super_admin',
+  ADMIN: 'admin',           // NEW: Can do finance + support (but not manage admins or settings)
   FINANCE_ADMIN: 'finance_admin',
   SUPPORT_ADMIN: 'support_admin',
 };
@@ -74,7 +75,8 @@ class ConfigService extends EventEmitter {
   };
 
   ROLE_HIERARCHY = {
-    [ROLES.SUPER_ADMIN]: 3,
+    [ROLES.SUPER_ADMIN]: 4,
+    [ROLES.ADMIN]: 3,
     [ROLES.FINANCE_ADMIN]: 2,
     [ROLES.SUPPORT_ADMIN]: 1,
   };
@@ -127,17 +129,26 @@ class ConfigService extends EventEmitter {
       throw new Error(`Insufficient permissions to modify ${configMeta.category} configs`);
     }
 
-    // 4. Save to history (versioning) — save the OLD value
-    await this.saveToHistory(key, configMeta.configValue, adminId, configMeta);
+    // 4-5. Save history and update config atomically in transaction
+    await db.transaction(async (tx) => {
+      // Save to history (versioning) — save the OLD value
+      await tx.insert(systemConfigHistory).values({
+        configKey: key,
+        configValue: String(configMeta.configValue),
+        valueType: configMeta.valueType,
+        category: configMeta.category,
+        changedBy: adminId,
+      });
 
-    // 5. Update config
-    await db.update(systemConfig)
-      .set({
-        configValue: String(value),
-        updatedBy: adminId,
-        updatedAt: new Date(),
-      })
-      .where(eq(systemConfig.configKey, key));
+      // Update config
+      await tx.update(systemConfig)
+        .set({
+          configValue: String(value),
+          updatedBy: adminId,
+          updatedAt: new Date(),
+        })
+        .where(eq(systemConfig.configKey, key));
+    });
 
     // 6. Hot reload - emit event for instant propagation
     this.emit('config:changed', { key, value, adminId });
@@ -427,13 +438,16 @@ class ConfigService extends EventEmitter {
     try {
       const configs = await db.select().from(systemConfig);
 
-      this.cache.clear();
+      // Build new cache atomically to avoid race conditions
+      const newCache = new Map();
       for (const config of configs) {
         const value = this.parseValue(config);
-        this.cache.set(config.configKey, value);
+        newCache.set(config.configKey, value);
         this.lastKnownGood.set(config.configKey, value); // Update fail-safe
       }
 
+      // Atomic swap - no window where cache is empty
+      this.cache = newCache;
       this.lastRefresh = Date.now();
       logger.debug('Config cache refreshed');
     } catch (error) {

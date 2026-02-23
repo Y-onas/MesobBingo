@@ -75,7 +75,7 @@ const admins = pgTable('admins', {
   telegramId: bigint('telegram_id', { mode: 'number' }).unique(),
   name: text('name').notNull(),
   email: text('email'),
-  role: varchar('role', { length: 20 }).default('support_admin').notNull(), // super_admin, finance_admin, support_admin
+  role: varchar('role', { length: 20 }).default('support_admin').notNull(), // super_admin, admin, finance_admin, support_admin
   isActive: boolean('is_active').default(true).notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });

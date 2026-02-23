@@ -62,7 +62,7 @@ export default function WithdrawalsPage() {
   const canReview = (w: any) => w.status === "pending";
   const canApproveReject = (w: any) => w.status === "under_review" && String(w.assigned_admin) === String(ADMIN_ID());
   const isLocked = (w: any) => w.status === "under_review" && w.assigned_admin && String(w.assigned_admin) !== String(ADMIN_ID());
-  const insufficientBalance = (w: any) => (w.user_withdrawable_balance || 0) < w.amount;
+  const insufficientBalance = (w: any) => Number(w.user_withdrawable_balance || 0) < Number(w.amount);
 
   if (isLoading) {
     return <div className="flex h-64 items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;

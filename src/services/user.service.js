@@ -1,4 +1,4 @@
-const { eq, sql } = require('drizzle-orm');
+﻿const { eq, sql } = require('drizzle-orm');
 const { db } = require('../database');
 const { users } = require('../database/schema');
 const configService = require('./config.service');
@@ -179,7 +179,7 @@ Your referral just made their first deposit!
 💰 You earned: *${bonusAmount} ብር*
 📊 Deposit amount: ${depositAmount} ብር
 
-💳 New balance: ${(Number(referrer.playingBalance) + bonusAmount).toFixed(2)} ብր (Playing Balance)
+💳 New balance: ${Number(referrer.playingBalance).toFixed(2)} ብր (Playing Balance)
 
 Keep inviting friends with /invite to earn more! 🚀`;
 

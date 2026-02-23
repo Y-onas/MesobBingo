@@ -172,14 +172,14 @@ router.post('/:id/reject', async (req, res) => {
       actionType: 'withdrawal_rejected',
       targetUser: String(result.telegramId),
       amount: result.amount,
-      details: reason,
+      details: rejectionReason,
       ipAddress: req.adminIp,
     });
 
     res.json({ success: true, withdrawal: result });
 
     // Notify user via Telegram
-    notifyUser(result.telegramId, `❌ *Withdrawal Rejected*\n\nYour withdrawal of *${Number(result.amount).toFixed(2)} ብር* was rejected.\n\nReason: ${reason}\n\nThe amount has been refunded to your wallet.`);
+    notifyUser(result.telegramId, `❌ *Withdrawal Rejected*\n\nYour withdrawal of *${Number(result.amount).toFixed(2)} ብር* was rejected.\n\nReason: ${rejectionReason}\n\nThe amount has been refunded to your wallet.`);
   } catch (error) {
     console.error('Withdrawal reject error:', error);
     res.status(400).json({ error: error.message });

@@ -1111,9 +1111,10 @@ class BingoEngine {
       try {
         await client.query('BEGIN');
         
-        // Refund entry fee to playing balance (refunds go back to playing balance)
+        // Refund entry fee to withdrawable balance to preserve withdrawal ability
+        // Also update play_wallet to maintain sync with playing_balance (legacy column)
         await client.query(
-          'UPDATE users SET playing_balance = playing_balance + $1, main_wallet = main_wallet + $1 WHERE telegram_id = $2',
+          'UPDATE users SET withdrawable_balance = withdrawable_balance + $1, main_wallet = main_wallet + $1, play_wallet = play_wallet + $1 WHERE telegram_id = $2',
           [game.entryFee, telegramId]
         );
 
@@ -1219,8 +1220,9 @@ class BingoEngine {
       await client.query('BEGIN');
 
       for (const telegramId of game.players) {
+        // Refund to withdrawable balance and update play_wallet for legacy sync
         await client.query(
-          'UPDATE users SET playing_balance = playing_balance + $1, main_wallet = main_wallet + $1 WHERE telegram_id = $2',
+          'UPDATE users SET withdrawable_balance = withdrawable_balance + $1, main_wallet = main_wallet + $1, play_wallet = play_wallet + $1 WHERE telegram_id = $2',
           [game.entryFee, telegramId]
         );
       }
@@ -1262,8 +1264,9 @@ class BingoEngine {
       await client.query('BEGIN');
 
       for (const telegramId of game.players) {
+        // Refund to withdrawable balance and update play_wallet for legacy sync
         await client.query(
-          'UPDATE users SET playing_balance = playing_balance + $1, main_wallet = main_wallet + $1, games_played = games_played + 1 WHERE telegram_id = $2',
+          'UPDATE users SET withdrawable_balance = withdrawable_balance + $1, main_wallet = main_wallet + $1, play_wallet = play_wallet + $1, games_played = games_played + 1 WHERE telegram_id = $2',
           [game.entryFee, telegramId]
         );
       }

@@ -101,6 +101,8 @@ INSERT INTO system_config (config_key, config_value, value_type, category, descr
 ON CONFLICT (config_key) DO NOTHING;
 
 -- ─── Seed Referral Tiers ─────────────────────────────────────────────
+-- Note: Run scripts/migrations/add-seed-constraints.js to add unique constraints
+-- for idempotency (prevents duplicates on re-run)
 INSERT INTO referral_tiers (min_deposit, max_deposit, bonus_amount) VALUES
   (50, 99.99, 5),
   (100, 199.99, 10),
@@ -108,6 +110,8 @@ INSERT INTO referral_tiers (min_deposit, max_deposit, bonus_amount) VALUES
   (500, NULL, 30);
 
 -- ─── Seed Payment Accounts ───────────────────────────────────────────
+-- Note: Run scripts/migrations/add-seed-constraints.js to add unique constraints
+-- for idempotency (prevents duplicates on re-run)
 INSERT INTO payment_accounts (provider, account_number, is_active, priority) VALUES
   ('telebirr', '0900000000', true, 1),
   ('cbe', '1000000000000', true, 1);

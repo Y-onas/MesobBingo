@@ -37,6 +37,7 @@ async function migrate() {
     },
   ];
 
+  let hadErrors = false;
   for (const config of configs) {
     try {
       // Check if exists
@@ -55,6 +56,7 @@ async function migrate() {
       }
     } catch (err) {
       console.error(`❌ Error adding ${config.configKey}:`, err.message);
+      hadErrors = true;
     }
   }
 
@@ -65,7 +67,7 @@ async function migrate() {
   console.log('3. Update values as needed');
   console.log('4. Changes apply immediately (no restart needed)');
   
-  process.exit(0);
+  process.exit(hadErrors ? 1 : 0);
 }
 
 migrate().catch((err) => {

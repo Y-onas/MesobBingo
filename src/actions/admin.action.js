@@ -232,6 +232,10 @@ const handleBroadcastAddButton = (buttonType) => async (ctx) => {
       [Markup.button.url(buttonText, buttonUrl)]
     ]);
     
+    if (!ctx.session?.broadcastMessage) {
+      return ctx.reply('❌ Broadcast message not found. Please start the broadcast flow again.');
+    }
+    
     const result = await adminService.broadcastMessage(
       ctx,
       ctx.session.broadcastMessage,
@@ -261,6 +265,11 @@ const handleBroadcastSendPlain = async (ctx) => {
     }
     
     await ctx.answerCbQuery();
+    
+    if (!ctx.session?.broadcastMessage) {
+      return ctx.reply('❌ Broadcast message not found. Please start the broadcast flow again.');
+    }
+    
     await ctx.reply('📢 Broadcasting message...');
     
     const result = await adminService.broadcastMessage(

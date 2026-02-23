@@ -1,6 +1,6 @@
 // ─── Admin Authentication & Authorization ───────────────────────────
 // DB-based admin management with in-memory caching
-// Supports: super_admin, finance_admin, support_admin roles
+// Supports: super_admin, admin, finance_admin, support_admin roles
 // The admins table is the source of truth (not .env ADMIN_IDS)
 // ────────────────────────────────────────────────────────────────────
 
@@ -11,13 +11,15 @@ const { eq, and } = require('drizzle-orm');
 // Admin roles
 const ROLES = {
   SUPER_ADMIN: 'super_admin',
+  ADMIN: 'admin',           // NEW: Can do finance + support (but not manage admins or settings)
   FINANCE_ADMIN: 'finance_admin',
   SUPPORT_ADMIN: 'support_admin',
 };
 
 // Role hierarchy (higher number = more permissions)
 const ROLE_HIERARCHY = {
-  [ROLES.SUPER_ADMIN]: 3,
+  [ROLES.SUPER_ADMIN]: 4,
+  [ROLES.ADMIN]: 3,
   [ROLES.FINANCE_ADMIN]: 2,
   [ROLES.SUPPORT_ADMIN]: 1,
 };

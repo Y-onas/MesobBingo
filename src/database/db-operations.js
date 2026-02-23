@@ -10,6 +10,7 @@ const logger = require('../utils/logger');
  */
 let dbHealthy = true;
 let lastHealthCheck = Date.now();
+let recoveryTimer = null;
 const HEALTH_CHECK_INTERVAL = 5000; // Check every 5s
 
 /**
@@ -21,8 +22,12 @@ function markDbUnhealthy() {
     dbHealthy = false;
   }
   
+  // Don't schedule if a recovery check is already pending
+  if (recoveryTimer) return;
+  
   // Schedule recovery check
-  setTimeout(async () => {
+  recoveryTimer = setTimeout(async () => {
+    recoveryTimer = null;
     try {
       await pool.query('SELECT 1');
       dbHealthy = true;

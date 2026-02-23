@@ -37,7 +37,7 @@ const handleStakeSelect = async (ctx) => {
   try {
     const stake = parseInt(ctx.callbackQuery.data.split('_')[2]);
     
-    if (!gameService.isValidStake(stake)) {
+    if (!(await gameService.isValidStake(stake))) {
       return ctx.answerCbQuery('Invalid stake');
     }
     

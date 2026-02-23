@@ -50,7 +50,7 @@ const GameRoomCard = ({ stake, isActive, players, maxPlayers, derash, onPlay, st
             <Clock className="w-3.5 h-3.5" />
             <div>
               <div className="text-[8px] uppercase tracking-wide">Starts In</div>
-              <div className="text-xs font-semibold text-foreground">{startsIn}</div>
+              <div className="text-xs font-semibold text-foreground">{startsIn ?? '--:--'}</div>
             </div>
           </div>
         )}

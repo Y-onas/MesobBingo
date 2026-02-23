@@ -2,10 +2,11 @@ import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { fetchAdmins, addAdmin, deactivateAdmin, activateAdmin, updateAdminRole } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
-import { Shield, UserPlus, Users, CheckCircle2, XCircle, Crown, Wallet, Headphones } from "lucide-react";
+import { Shield, UserPlus, Users, CheckCircle2, XCircle, Crown, Wallet, Headphones, UserCog } from "lucide-react";
 
 const ROLES = [
   { value: "super_admin", label: "Super Admin", icon: Crown, color: "text-yellow-500 bg-yellow-500/10" },
+  { value: "admin", label: "Admin", icon: UserCog, color: "text-purple-500 bg-purple-500/10" },
   { value: "finance_admin", label: "Finance Admin", icon: Wallet, color: "text-blue-500 bg-blue-500/10" },
   { value: "support_admin", label: "Support Admin", icon: Headphones, color: "text-green-500 bg-green-500/10" },
 ];

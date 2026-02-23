@@ -114,7 +114,7 @@ const textHandler = async (ctx) => {
  */
 const handleWithdrawAmount = async (ctx, text) => {
   const amount = parseAmount(text);
-  const MIN_WITHDRAW = await configService.get('min_withdraw', 150);
+  const MIN_WITHDRAW = Number(await configService.get('min_withdraw', 150));
   
   if (!amount || amount < MIN_WITHDRAW) {
     return ctx.reply(`❌ Invalid amount. Minimum withdrawal is ${MIN_WITHDRAW} ${CURRENCY}.`);
@@ -173,9 +173,10 @@ const handleWithdrawAccountName = async (ctx, text) => {
     return ctx.reply('❌ Name too short. Please enter your full name (minimum 3 characters).');
   }
   
-  // Check for valid characters (letters, spaces, hyphens, apostrophes)
-  if (!/^[a-zA-Z\s\-']+$/.test(accountHolderName)) {
-    return ctx.reply('❌ Invalid name format. Please use only letters, spaces, hyphens, and apostrophes.\n\nExample: John Doe');
+  // Check for valid characters (Unicode letters, spaces, hyphens, apostrophes, periods)
+  // Supports Latin, Amharic, and other Unicode scripts
+  if (!/^[\p{L}\s\-'.]+$/u.test(accountHolderName)) {
+    return ctx.reply('❌ Invalid name format. Please use only letters, spaces, hyphens, and apostrophes.\n\nExample: Abebe Kebede');
   }
   
   ctx.session.accountHolderName = accountHolderName;
@@ -212,7 +213,7 @@ const handleDepositSMS = async (ctx, text) => {
   const amountStr = amountMatch ? (amountMatch[1] || amountMatch[2] || amountMatch[3] || amountMatch[4]) : null;
   const amount = amountStr ? parseFloat(amountStr.replace(/,/g, '')) : null;
   
-  const MIN_DEPOSIT = await configService.get('min_deposit', 50);
+  const MIN_DEPOSIT = Number(await configService.get('min_deposit', 50));
 
   if (!amount || amount < MIN_DEPOSIT) {
     return ctx.reply(`❌ Could not parse deposit amount from SMS. 

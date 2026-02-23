@@ -267,7 +267,7 @@ export default function UsersPage() {
         <DialogContent className="bg-card border-border">
           <DialogHeader><DialogTitle>Adjust Wallet — {selectedUser?.username}</DialogTitle></DialogHeader>
           <div className="space-y-3">
-            <p className="text-sm text-muted-foreground">Current balance: <span className="font-mono font-semibold">{Number(selectedUser?.main_wallet || 0).toLocaleString()} ብር</span></p>
+            <p className="text-sm text-muted-foreground">Current balance: <span className="font-mono font-semibold">{(Number(selectedUser?.withdrawable_balance || 0) + Number(selectedUser?.playing_balance || 0)).toLocaleString()} ብር</span></p>
             <Input
               type="number"
               placeholder="Amount (positive to add, negative to deduct)"

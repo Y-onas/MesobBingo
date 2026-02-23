@@ -10,6 +10,7 @@ const { eq } = require('drizzle-orm');
 async function addAccountNameConfigs() {
   console.log('🔧 Adding account name configuration keys...\n');
 
+  let exitCode = 0;
   try {
     // Check if configs already exist
     const existing = await db.select()
@@ -50,9 +51,9 @@ async function addAccountNameConfigs() {
 
   } catch (error) {
     console.error('❌ Error adding account name configs:', error);
-    throw error;
+    exitCode = 1;
   } finally {
-    process.exit(0);
+    process.exit(exitCode);
   }
 }
 
