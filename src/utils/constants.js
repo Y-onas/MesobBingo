@@ -1,6 +1,6 @@
 // Bot Information
 const BOT_NAME = 'Mesob Bingo';
-const BOT_USERNAME = 'Mesob_Bingo_bot';
+// BOT_USERNAME is now dynamic - get from configService.get('bot_username')
 const CURRENCY = 'ብር'; // Ethiopian Birr
 
 // Emojis
@@ -57,8 +57,7 @@ const MESSAGES = {
   INVITE_MESSAGE: `🤝 *Invite Friends & Earn Bonus!*
 🚀
 
-Share your personal link:
-\`https://t.me/${BOT_USERNAME}?start=ref_{userId}\`
+Share your personal link to earn bonuses!
 
 *How it works:*
 💰 Earn bonus on your referral's FIRST deposit:
@@ -150,6 +149,7 @@ const SESSION_STATES = {
   AWAITING_DEPOSIT_SMS: 'awaiting_deposit_sms',
   AWAITING_WITHDRAW_AMOUNT: 'awaiting_withdraw_amount',
   AWAITING_WITHDRAW_PHONE: 'awaiting_withdraw_phone',
+  AWAITING_WITHDRAW_ACCOUNT_NAME: 'awaiting_withdraw_account_name',
   AWAITING_GAME_STAKE: 'awaiting_game_stake',
   AWAITING_GAME_BOARD: 'awaiting_game_board',
   AWAITING_GAME_NUMBERS: 'awaiting_game_numbers',
@@ -158,8 +158,7 @@ const SESSION_STATES = {
   AWAITING_BONUS_DETAILS: 'awaiting_bonus_details'
 };
 
-// Game Stakes
-const GAME_STAKES = [5, 10, 20, 50, 100];
+// Game Stakes - now dynamic, use configService.get('game_stakes', [10, 20, 50, 100])
 
 // Board Types
 const BOARD_TYPES = ['A', 'B', 'C', 'D', 'E'];
@@ -229,10 +228,12 @@ const SOCKET_EVENTS = {
 };
 
 // ─── Connection Limits ──────────────────────────────────────────────
+const { MAX_CONNECTIONS_PER_USER, MAX_CONNECTIONS_PER_IP, MAX_TOTAL_CONNECTIONS } = require('../config/env');
+
 const CONNECTION_LIMITS = {
-  MAX_PER_USER: 2,
-  MAX_PER_IP: 5,
-  MAX_TOTAL: 1000,
+  MAX_PER_USER: MAX_CONNECTIONS_PER_USER,
+  MAX_PER_IP: MAX_CONNECTIONS_PER_IP,
+  MAX_TOTAL: MAX_TOTAL_CONNECTIONS,
   HANDSHAKE_TIMEOUT_MS: 30000,
   HEARTBEAT_INTERVAL_MS: 30000,
   IDLE_TIMEOUT_MS: 120000, // 2 minutes
@@ -254,12 +255,12 @@ const RATE_LIMITS = {
 
 module.exports = {
   BOT_NAME,
-  BOT_USERNAME,
+  // BOT_USERNAME removed - use configService.get('bot_username') instead
+  // GAME_STAKES removed - use configService.get('game_stakes', [10, 20, 50, 100]) instead
   CURRENCY,
   EMOJI,
   MESSAGES,
   SESSION_STATES,
-  GAME_STAKES,
   BOARD_TYPES,
   BINGO_RANGES,
   BINGO_LETTERS,

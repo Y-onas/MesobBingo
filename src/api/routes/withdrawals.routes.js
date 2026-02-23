@@ -19,6 +19,7 @@ router.get('/', async (req, res) => {
         amount: withdrawals.amount,
         method: withdrawals.method,
         accountNumber: withdrawals.accountNumber,
+        accountHolderName: withdrawals.accountHolderName,
         status: withdrawals.status,
         assignedAdmin: withdrawals.assignedAdmin,
         processedBy: withdrawals.processedBy,
@@ -29,6 +30,8 @@ router.get('/', async (req, res) => {
         username: users.username,
         firstName: users.firstName,
         mainWallet: users.mainWallet,
+        withdrawableBalance: users.withdrawableBalance,
+        playingBalance: users.playingBalance,
         totalDeposited: users.totalDeposited,
         totalWithdrawn: users.totalWithdrawn,
         gamesPlayed: users.gamesPlayed,
@@ -51,11 +54,14 @@ router.get('/', async (req, res) => {
       amount: Number(r.amount),
       payment_method: r.method,
       account_details: r.accountNumber,
+      account_holder_name: r.accountHolderName || 'Not provided',
       created_at: r.createdAt,
       status: r.status,
       assigned_admin: r.assignedAdmin,
       rejection_reason: r.rejectionReason,
       user_wallet: Number(r.mainWallet || 0),
+      user_withdrawable_balance: Number(r.withdrawableBalance || 0),
+      user_playing_balance: Number(r.playingBalance || 0),
       user_total_deposited: Number(r.totalDeposited || 0),
       user_total_withdrawn: Number(r.totalWithdrawn || 0),
       user_games_played: Number(r.gamesPlayed || 0),
@@ -105,7 +111,16 @@ router.post('/:id/approve', async (req, res) => {
     // Verify ownership and status
     const [w] = await db.select().from(withdrawals).where(eq(withdrawals.id, withdrawalId)).limit(1);
     if (!w) return res.status(404).json({ error: 'Withdrawal not found' });
-    if (w.status !== 'under_review' || w.assignedAdmin !== adminId) {
+    
+    // Validate account holder name exists
+    if (!w.accountHolderName || w.accountHolderName.trim().length < 3) {
+      return res.status(400).json({ 
+        error: 'Cannot approve: Account holder name is missing or invalid. Please contact user to resubmit.' 
+      });
+    }
+    
+    // Compare as strings to handle type mismatches
+    if (w.status !== 'under_review' || String(w.assignedAdmin) !== String(adminId)) {
       return res.status(409).json({ error: 'Withdrawal not locked by this admin' });
     }
 
@@ -138,18 +153,18 @@ router.post('/:id/reject', async (req, res) => {
     const adminId = req.adminId;
     const adminName = req.adminName;
 
-    if (!reason || !reason.trim()) {
-      return res.status(400).json({ error: 'Rejection reason is required' });
-    }
+    // Reason is optional - use default if not provided
+    const rejectionReason = reason && reason.trim() ? reason.trim() : 'Rejected by admin';
 
     // Verify ownership and status
     const [w] = await db.select().from(withdrawals).where(eq(withdrawals.id, withdrawalId)).limit(1);
     if (!w) return res.status(404).json({ error: 'Withdrawal not found' });
-    if (w.status !== 'under_review' || w.assignedAdmin !== adminId) {
+    // Compare as strings to handle type mismatches
+    if (w.status !== 'under_review' || String(w.assignedAdmin) !== String(adminId)) {
       return res.status(409).json({ error: 'Withdrawal not locked by this admin' });
     }
 
-    const result = await withdrawService.rejectWithdrawal(withdrawalId, adminId, reason);
+    const result = await withdrawService.rejectWithdrawal(withdrawalId, adminId, rejectionReason);
 
     await db.insert(auditLogs).values({
       adminId: String(adminId),

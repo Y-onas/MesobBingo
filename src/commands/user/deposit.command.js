@@ -1,12 +1,17 @@
-const { MESSAGES, EMOJI } = require('../../utils/constants');
 const { paymentMethodKeyboard } = require('../../keyboards/deposit.keyboard');
+const configService = require('../../services/config.service');
 
 /**
  * Handle /deposit command
  */
 const depositCommand = async (ctx) => {
   try {
-    await ctx.reply(MESSAGES.DEPOSIT_INSTRUCTIONS, {
+    const message = await configService.getMessage(
+      'msg_deposit_instructions', {},
+      '💰 *Deposit Instructions*\n\nገንዘብ ለማስገባት ከታች አንዱን የክፍያ ዘዴ ይምረጡ:'
+    );
+
+    await ctx.reply(message, {
       parse_mode: 'Markdown',
       ...paymentMethodKeyboard()
     });

@@ -100,7 +100,8 @@ router.post('/:id/approve', async (req, res) => {
     const [dep] = await db.select().from(deposits).where(eq(deposits.id, depositId)).limit(1);
     if (!dep) return res.status(404).json({ error: 'Deposit not found' });
     
-    if (dep.status === 'under_review' && dep.assignedAdmin && dep.assignedAdmin !== adminId) {
+    // Compare as strings to handle type mismatches
+    if (dep.status === 'under_review' && dep.assignedAdmin && String(dep.assignedAdmin) !== String(adminId)) {
       return res.status(403).json({ error: 'This deposit is locked by another admin' });
     }
 
@@ -134,19 +135,19 @@ router.post('/:id/reject', async (req, res) => {
     const adminId = req.adminId;
     const adminName = req.adminName;
 
-    if (!reason || !reason.trim()) {
-      return res.status(400).json({ error: 'Rejection reason is required' });
-    }
+    // Reason is optional - use default if not provided
+    const rejectionReason = reason && reason.trim() ? reason.trim() : 'Rejected by admin';
 
     // Check if deposit is locked by another admin
     const [dep] = await db.select().from(deposits).where(eq(deposits.id, depositId)).limit(1);
     if (!dep) return res.status(404).json({ error: 'Deposit not found' });
     
-    if (dep.status === 'under_review' && dep.assignedAdmin && dep.assignedAdmin !== adminId) {
+    // Compare as strings to handle type mismatches
+    if (dep.status === 'under_review' && dep.assignedAdmin && String(dep.assignedAdmin) !== String(adminId)) {
       return res.status(403).json({ error: 'This deposit is locked by another admin' });
     }
 
-    const result = await depositService.rejectDeposit(depositId, adminId, reason);
+    const result = await depositService.rejectDeposit(depositId, adminId, rejectionReason);
 
     await db.insert(auditLogs).values({
       adminId: String(adminId),
@@ -154,14 +155,14 @@ router.post('/:id/reject', async (req, res) => {
       actionType: 'deposit_rejected',
       targetUser: String(result.telegramId),
       amount: result.amount,
-      details: reason,
+      details: rejectionReason,
       ipAddress: req.adminIp,
     });
 
     res.json({ success: true, deposit: result });
 
     // Notify user via Telegram
-    notifyUser(result.telegramId, `❌ *Deposit Rejected*\n\nYour deposit of *${Number(result.amount).toFixed(2)} ብር* was rejected.\n\nReason: ${reason}\n\nPlease contact support if you believe this is an error.`);
+    notifyUser(result.telegramId, `❌ *Deposit Rejected*\n\nYour deposit of *${Number(result.amount).toFixed(2)} ብር* was rejected.\n\nReason: ${rejectionReason}\n\nPlease contact support if you believe this is an error.`);
   } catch (error) {
     console.error('Deposit reject error:', error);
     res.status(400).json({ error: error.message });

@@ -1,7 +1,7 @@
 const { eq, sql } = require('drizzle-orm');
 const { db } = require('../database');
 const { users } = require('../database/schema');
-const { REFERRAL_BONUS } = require('../config/env');
+const configService = require('./config.service');
 const logger = require('../utils/logger');
 
 /**
@@ -63,7 +63,7 @@ const getUser = async (telegramId) => {
 };
 
 /**
- * Update user balance
+ * Update user balance (legacy - supports old wallet system)
  */
 const updateBalance = async (telegramId, wallet, amount) => {
   const field = wallet === 'main' ? users.mainWallet : users.playWallet;
@@ -76,21 +76,61 @@ const updateBalance = async (telegramId, wallet, amount) => {
 };
 
 /**
- * Calculate referral bonus based on deposit amount (tiered system)
- * @param {number} depositAmount - The deposit amount
- * @returns {number} Bonus amount to give referrer
+ * Update withdrawable balance (winnings only)
  */
-const calculateReferralBonus = (depositAmount) => {
-  const amount = Number(depositAmount);
-  
-  // Tiered bonus structure
-  if (amount >= 500) return 30;
-  if (amount >= 200) return 20;
-  if (amount >= 100) return 10;
-  if (amount >= 50) return 5;
-  
-  // No bonus for deposits below 50 Birr
-  return 0;
+const updateWithdrawableBalance = async (telegramId, amount) => {
+  const [updated] = await db.update(users)
+    .set({ withdrawableBalance: sql`${users.withdrawableBalance} + ${amount}` })
+    .where(eq(users.telegramId, telegramId))
+    .returning();
+  logger.debug(`Withdrawable balance updated: ${amount > 0 ? '+' : ''}${amount}`);
+  return updated;
+};
+
+/**
+ * Update playing balance (deposits/bonuses)
+ */
+const updatePlayingBalance = async (telegramId, amount) => {
+  const [updated] = await db.update(users)
+    .set({ playingBalance: sql`${users.playingBalance} + ${amount}` })
+    .where(eq(users.telegramId, telegramId))
+    .returning();
+  logger.debug(`Playing balance updated: ${amount > 0 ? '+' : ''}${amount}`);
+  return updated;
+};
+
+/**
+ * Get withdrawable balance
+ */
+const getWithdrawableBalance = async (telegramId) => {
+  const user = await getUser(telegramId);
+  return user ? Number(user.withdrawableBalance) : 0;
+};
+
+/**
+ * Get playing balance
+ */
+const getPlayingBalance = async (telegramId) => {
+  const user = await getUser(telegramId);
+  return user ? Number(user.playingBalance) : 0;
+};
+
+/**
+ * Get total balance (withdrawable + playing)
+ */
+const getTotalBalance = async (telegramId) => {
+  const user = await getUser(telegramId);
+  if (!user) return 0;
+  return Number(user.withdrawableBalance) + Number(user.playingBalance);
+};
+
+/**
+ * Calculate referral bonus based on deposit amount (dynamic from DB)
+ * @param {number} depositAmount - The deposit amount
+ * @returns {Promise<number>} Bonus amount to give referrer
+ */
+const calculateReferralBonus = async (depositAmount) => {
+  return configService.getReferralBonus(Number(depositAmount));
 };
 
 /**
@@ -111,7 +151,7 @@ const processReferralBonus = async (depositorId, depositAmount, bot = null) => {
     }
 
     // Calculate bonus based on deposit amount
-    const bonusAmount = calculateReferralBonus(depositAmount);
+    const bonusAmount = await calculateReferralBonus(depositAmount);
     
     if (bonusAmount === 0) {
       logger.debug(`No referral bonus - deposit amount ${depositAmount} below minimum threshold`);
@@ -120,12 +160,13 @@ const processReferralBonus = async (depositorId, depositAmount, bot = null) => {
 
     await db.update(users)
       .set({
+        playingBalance: sql`${users.playingBalance} + ${bonusAmount}`,
         mainWallet: sql`${users.mainWallet} + ${bonusAmount}`,
         referralEarnings: sql`${users.referralEarnings} + ${bonusAmount}`,
       })
       .where(eq(users.telegramId, depositor.referredBy));
 
-    logger.info(`Referral bonus ${bonusAmount} Birr added to ${depositor.referredBy} for ${depositorId}'s first deposit of ${depositAmount} Birr`);
+    logger.info(`Referral bonus ${bonusAmount} Birr added to playing balance for ${depositor.referredBy} for ${depositorId}'s first deposit of ${depositAmount} Birr`);
 
     // Send notification to referrer if bot instance is available
     if (bot) {
@@ -138,7 +179,7 @@ Your referral just made their first deposit!
 💰 You earned: *${bonusAmount} ብር*
 📊 Deposit amount: ${depositAmount} ብር
 
-💳 New balance: ${Number(referrer.mainWallet).toFixed(2)} ብር
+💳 New balance: ${(Number(referrer.playingBalance) + bonusAmount).toFixed(2)} ብր (Playing Balance)
 
 Keep inviting friends with /invite to earn more! 🚀`;
 
@@ -197,11 +238,13 @@ const verifyPhone = async (telegramId, phone) => {
     phoneVerified: true,
   };
 
-  // Grant welcome bonus only if not already claimed
+  // Grant welcome bonus only if not already claimed (goes to playing balance - not withdrawable)
   if (!user.bonusClaimed) {
-    updates.playWallet = sql`${users.playWallet} + 5`;
+    const welcomeBonus = await configService.get('welcome_bonus', 5);
+    updates.playingBalance = sql`${users.playingBalance} + ${welcomeBonus}`;
+    updates.playWallet = sql`${users.playWallet} + ${welcomeBonus}`;
     updates.bonusClaimed = true;
-    logger.debug(`Welcome bonus of 5 granted`);
+    logger.debug(`Welcome bonus of ${welcomeBonus} granted to playing balance`);
   }
 
   const [updated] = await db.update(users)
@@ -216,6 +259,11 @@ module.exports = {
   createOrGetUser,
   getUser,
   updateBalance,
+  updateWithdrawableBalance,
+  updatePlayingBalance,
+  getWithdrawableBalance,
+  getPlayingBalance,
+  getTotalBalance,
   processReferralBonus,
   getUsersCount,
   getDepositors,

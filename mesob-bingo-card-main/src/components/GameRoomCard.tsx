@@ -1,17 +1,16 @@
-import { Users, Clock, RefreshCw } from "lucide-react";
+import { Users, Clock } from "lucide-react";
 
 interface GameRoomCardProps {
   stake: number;
   isActive: boolean;
   players: number;
-  maxPlayers?: number;
+  maxPlayers: number;
   derash: number;
   onPlay: () => void;
   startsIn?: string;
-  type?: string;
 }
 
-const GameRoomCard = ({ stake, isActive, players, maxPlayers = 100, derash, onPlay, startsIn = "00:42", type = "Standard" }: GameRoomCardProps) => {
+const GameRoomCard = ({ stake, isActive, players, maxPlayers, derash, onPlay, startsIn }: GameRoomCardProps) => {
   return (
     <div className="bg-card border border-border rounded-lg p-2.5 space-y-1.5">
       {/* Header */}

@@ -36,6 +36,8 @@ export interface Balance {
     mainWallet: number;
     playWallet: number;
     total: number;
+    withdrawable?: number;
+    playing?: number;
 }
 
 export interface WinnerInfo {

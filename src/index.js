@@ -78,11 +78,12 @@ const main = async () => {
       logger.error('FATAL: Uncaught exception', err);
       
       try {
-        // Alert admin via bot
-        const { ADMIN_IDS } = require('./config/env');
-        for (const adminId of ADMIN_IDS) {
+        // Alert admin via bot (from DB)
+        const { getAllAdmins } = require('./config/admin');
+        const allAdmins = await getAllAdmins();
+        for (const admin of allAdmins.filter(a => a.isActive)) {
           try {
-            await bot.telegram.sendMessage(adminId, `🚨 CRASH: ${err.message}`);
+            await bot.telegram.sendMessage(admin.telegramId, `🚨 CRASH: ${err.message}`);
           } catch (e) { /* ignore send error */ }
         }
       } catch (e) { /* ignore */ }

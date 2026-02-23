@@ -1,4 +1,4 @@
-const { pgTable, bigint, text, numeric, boolean, timestamp, serial, varchar, integer } = require('drizzle-orm/pg-core');
+const { pgTable, bigint, text, numeric, boolean, timestamp, serial, varchar, integer, date } = require('drizzle-orm/pg-core');
 
 // ─────────────────────────────────────────────────────────────────────
 // DATABASE SCHEMA DEFINITIONS
@@ -15,6 +15,9 @@ const users = pgTable('users', {
   phone: text('phone'),
   mainWallet: numeric('main_wallet', { precision: 12, scale: 2 }).default('0').notNull(),
   playWallet: numeric('play_wallet', { precision: 12, scale: 2 }).default('0').notNull(),
+  withdrawableBalance: numeric('withdrawable_balance', { precision: 12, scale: 2 }).default('0').notNull(),
+  playingBalance: numeric('playing_balance', { precision: 12, scale: 2 }).default('0').notNull(),
+  totalWinnings: numeric('total_winnings', { precision: 12, scale: 2 }).default('0').notNull(),
   referredBy: bigint('referred_by', { mode: 'number' }),
   referralCount: bigint('referral_count', { mode: 'number' }).default(0).notNull(),
   referralEarnings: numeric('referral_earnings', { precision: 12, scale: 2 }).default('0').notNull(),
@@ -49,13 +52,14 @@ const deposits = pgTable('deposits', {
 });
 
 // ─── Withdrawals Table ───────────────────────────────────────────────
-// Migration: drizzle/0000_init_schema.sql
+// Migration: drizzle/0000_init_schema.sql, drizzle/0008_add_withdrawal_account_name.sql
 const withdrawals = pgTable('withdrawals', {
   id: serial('id').primaryKey(),
   telegramId: bigint('telegram_id', { mode: 'number' }).notNull(),
   amount: numeric('amount', { precision: 12, scale: 2 }).notNull(),
   method: varchar('method', { length: 20 }).notNull(),
   accountNumber: text('account_number').notNull(),
+  accountHolderName: text('account_holder_name'), // Full name of account holder
   status: varchar('status', { length: 20 }).default('pending').notNull(), // pending, under_review, approved, rejected
   assignedAdmin: text('assigned_admin'), // admin who locked this for review
   processedBy: bigint('processed_by', { mode: 'number' }),
@@ -197,4 +201,58 @@ const winPercentageRules = pgTable('win_percentage_rules', {
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
 
-module.exports = { users, deposits, withdrawals, admins, auditLogs, fraudAlerts, gameRooms, games, boards, gamePlayers, calledNumbers, winPercentageRules };
+// ─── System Configuration Table ─────────────────────────────────────
+// Migration: drizzle/0007_add_dynamic_config.sql
+const systemConfig = pgTable('system_config', {
+  id: serial('id').primaryKey(),
+  configKey: varchar('config_key', { length: 100 }).unique().notNull(),
+  configValue: text('config_value').notNull(),
+  valueType: varchar('value_type', { length: 20 }).notNull(), // 'string', 'number', 'boolean', 'json'
+  category: varchar('category', { length: 50 }).notNull(), // 'payment', 'limits', 'bonuses', 'game', 'features'
+  description: text('description'),
+  updatedBy: bigint('updated_by', { mode: 'number' }),
+  updatedAt: timestamp('updated_at').defaultNow(),
+  createdAt: timestamp('created_at').defaultNow(),
+});
+
+// ─── System Configuration History Table ─────────────────────────────
+// Migration: drizzle/0007_add_dynamic_config.sql
+const systemConfigHistory = pgTable('system_config_history', {
+  id: serial('id').primaryKey(),
+  configKey: varchar('config_key', { length: 100 }).notNull(),
+  configValue: text('config_value').notNull(),
+  valueType: varchar('value_type', { length: 20 }).notNull(),
+  category: varchar('category', { length: 50 }).notNull(),
+  changedBy: bigint('changed_by', { mode: 'number' }).notNull(),
+  changedAt: timestamp('changed_at').defaultNow(),
+});
+
+// ─── Referral Tiers Table ───────────────────────────────────────────
+// Migration: drizzle/0007_add_dynamic_config.sql
+const referralTiers = pgTable('referral_tiers', {
+  id: serial('id').primaryKey(),
+  minDeposit: numeric('min_deposit', { precision: 12, scale: 2 }).notNull(),
+  maxDeposit: numeric('max_deposit', { precision: 12, scale: 2 }), // NULL = no upper limit
+  bonusAmount: numeric('bonus_amount', { precision: 12, scale: 2 }).notNull(),
+  isActive: boolean('is_active').default(true),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+});
+
+// ─── Payment Accounts Table ─────────────────────────────────────────
+// Migration: drizzle/0007_add_dynamic_config.sql
+const paymentAccounts = pgTable('payment_accounts', {
+  id: serial('id').primaryKey(),
+  provider: varchar('provider', { length: 20 }).notNull(), // 'telebirr', 'cbe'
+  accountNumber: varchar('account_number', { length: 50 }).notNull(),
+  accountName: varchar('account_name', { length: 100 }),
+  isActive: boolean('is_active').default(true),
+  priority: integer('priority').default(0),
+  dailyLimit: numeric('daily_limit', { precision: 12, scale: 2 }),
+  currentDailyTotal: numeric('current_daily_total', { precision: 12, scale: 2 }).default('0'),
+  lastResetDate: date('last_reset_date').defaultNow(),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+});
+
+module.exports = { users, deposits, withdrawals, admins, auditLogs, fraudAlerts, gameRooms, games, boards, gamePlayers, calledNumbers, winPercentageRules, systemConfig, systemConfigHistory, referralTiers, paymentAccounts };

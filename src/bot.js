@@ -70,8 +70,9 @@ const createBot = () => {
 
   // Register additional commands
   bot.command('contact', async (ctx) => {
-    const { SUPPORT_USERNAME } = require('./config/env');
-    await ctx.reply(`🏪 *Contact Us*\n\nSupport: ${SUPPORT_USERNAME}`, { parse_mode: 'Markdown' });
+    const configService = require('./services/config.service');
+    const supportUsername = await configService.get('support_username', '@mesobbingosupport');
+    await ctx.reply(`🏪 *Contact Us*\n\nSupport: ${supportUsername}`, { parse_mode: 'Markdown' });
   });
 
   bot.command('join', async (ctx) => {

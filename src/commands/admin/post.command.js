@@ -1,14 +1,16 @@
-const { MESSAGES, SESSION_STATES } = require('../../utils/constants');
+const { SESSION_STATES } = require('../../utils/constants');
 const { isAdmin } = require('../../config/admin');
 const { broadcastTypeKeyboard } = require('../../keyboards/admin.keyboard');
+const configService = require('../../services/config.service');
 
 /**
  * Handle /post command (broadcast)
  */
 const postCommand = async (ctx) => {
   try {
-    if (!isAdmin(ctx.from.id)) {
-      return ctx.reply(MESSAGES.ADMIN_ONLY);
+    if (!await isAdmin(ctx.from.id)) {
+      const msg = await configService.getMessage('msg_admin_only', {}, '⚠️ This command is for admins only.');
+      return ctx.reply(msg);
     }
     
     await ctx.reply(`📢 *Broadcast Message*

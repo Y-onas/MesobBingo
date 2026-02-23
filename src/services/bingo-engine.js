@@ -99,13 +99,13 @@ class BingoEngine {
         return { success: false, error: 'Room not found' };
       }
 
-      // Check user balance
+      // Check user balance (use new balance system)
       const [user] = await db.select().from(users).where(eq(users.telegramId, telegramId)).limit(1);
       if (!user) {
         return { success: false, error: 'User not found' };
       }
 
-      const totalBalance = Number(user.mainWallet) + Number(user.playWallet);
+      const totalBalance = Number(user.withdrawableBalance) + Number(user.playingBalance);
       if (totalBalance < Number(room.entryFee)) {
         return { success: false, error: 'Insufficient balance' };
       }
@@ -264,28 +264,45 @@ class BingoEngine {
         return { success: false, error: 'Board already taken' };
       }
 
-      // Deduct entry fee from user (prefer play wallet, then main wallet)
+      // Deduct entry fee from user (NEW SYSTEM: prefer playing balance, then withdrawable balance)
+      // Can split across both balances if needed
       const { rows: [user] } = await client.query(
         'SELECT * FROM users WHERE telegram_id = $1 FOR UPDATE',
         [telegramId]
       );
 
-      const playBalance = Number(user.play_wallet);
-      const mainBalance = Number(user.main_wallet);
+      const playingBalance = Number(user.playing_balance);
+      const withdrawableBalance = Number(user.withdrawable_balance);
+      const totalBalance = playingBalance + withdrawableBalance;
 
-      if (playBalance >= game.entryFee) {
-        await client.query(
-          'UPDATE users SET play_wallet = play_wallet - $1 WHERE telegram_id = $2',
-          [game.entryFee, telegramId]
-        );
-      } else if (mainBalance >= game.entryFee) {
-        await client.query(
-          'UPDATE users SET main_wallet = main_wallet - $1 WHERE telegram_id = $2',
-          [game.entryFee, telegramId]
-        );
-      } else {
+      // Check if user has enough total balance
+      if (totalBalance < game.entryFee) {
         await client.query('ROLLBACK');
         return { success: false, error: 'Insufficient balance' };
+      }
+
+      // Deduct from playing_balance first, then withdrawable_balance if needed
+      if (playingBalance >= game.entryFee) {
+        // Enough in playing balance alone
+        await client.query(
+          'UPDATE users SET playing_balance = playing_balance - $1, play_wallet = play_wallet - $1 WHERE telegram_id = $2',
+          [game.entryFee, telegramId]
+        );
+      } else if (playingBalance > 0) {
+        // Split between playing and withdrawable
+        const fromPlaying = playingBalance;
+        const fromWithdrawable = game.entryFee - playingBalance;
+        
+        await client.query(
+          'UPDATE users SET playing_balance = 0, play_wallet = play_wallet - $1, withdrawable_balance = withdrawable_balance - $2, main_wallet = main_wallet - $2 WHERE telegram_id = $3',
+          [fromPlaying, fromWithdrawable, telegramId]
+        );
+      } else {
+        // All from withdrawable balance
+        await client.query(
+          'UPDATE users SET withdrawable_balance = withdrawable_balance - $1, main_wallet = main_wallet - $1 WHERE telegram_id = $2',
+          [game.entryFee, telegramId]
+        );
       }
 
       // Assign board
@@ -820,9 +837,9 @@ class BingoEngine {
       const prizePool = Number(dbGame.prize_pool);
       const winAmount = Math.floor(prizePool * (game.winningPercentage / 100));
 
-      // Update winner balance
+      // Update winner balance (add to withdrawable_balance - winnings only)
       await client.query(
-        'UPDATE users SET main_wallet = main_wallet + $1, games_won = games_won + 1 WHERE telegram_id = $2',
+        'UPDATE users SET withdrawable_balance = withdrawable_balance + $1, main_wallet = main_wallet + $1, games_won = games_won + 1, total_winnings = total_winnings + $1 WHERE telegram_id = $2',
         [winAmount, telegramId]
       );
 
@@ -912,7 +929,7 @@ class BingoEngine {
       // Update all winners' balances
       for (const winner of game.pendingWinners) {
         await client.query(
-          'UPDATE users SET main_wallet = main_wallet + $1, games_won = games_won + 1 WHERE telegram_id = $2',
+          'UPDATE users SET withdrawable_balance = withdrawable_balance + $1, main_wallet = main_wallet + $1, games_won = games_won + 1, total_winnings = total_winnings + $1 WHERE telegram_id = $2',
           [prizePerWinner, winner.telegramId]
         );
         winner.winAmount = prizePerWinner;
@@ -1094,9 +1111,9 @@ class BingoEngine {
       try {
         await client.query('BEGIN');
         
-        // Refund entry fee
+        // Refund entry fee to playing balance (refunds go back to playing balance)
         await client.query(
-          'UPDATE users SET main_wallet = main_wallet + $1 WHERE telegram_id = $2',
+          'UPDATE users SET playing_balance = playing_balance + $1, main_wallet = main_wallet + $1 WHERE telegram_id = $2',
           [game.entryFee, telegramId]
         );
 
@@ -1203,7 +1220,7 @@ class BingoEngine {
 
       for (const telegramId of game.players) {
         await client.query(
-          'UPDATE users SET main_wallet = main_wallet + $1 WHERE telegram_id = $2',
+          'UPDATE users SET playing_balance = playing_balance + $1, main_wallet = main_wallet + $1 WHERE telegram_id = $2',
           [game.entryFee, telegramId]
         );
       }
@@ -1246,7 +1263,7 @@ class BingoEngine {
 
       for (const telegramId of game.players) {
         await client.query(
-          'UPDATE users SET main_wallet = main_wallet + $1, games_played = games_played + 1 WHERE telegram_id = $2',
+          'UPDATE users SET playing_balance = playing_balance + $1, main_wallet = main_wallet + $1, games_played = games_played + 1 WHERE telegram_id = $2',
           [game.entryFee, telegramId]
         );
       }
@@ -1620,9 +1637,12 @@ class BingoEngine {
     const [user] = await db.select().from(users).where(eq(users.telegramId, telegramId)).limit(1);
     if (!user) return null;
     return {
+      withdrawable: Number(user.withdrawableBalance),
+      playing: Number(user.playingBalance),
+      total: Number(user.withdrawableBalance) + Number(user.playingBalance),
+      // Legacy fields for backward compatibility
       mainWallet: Number(user.mainWallet),
       playWallet: Number(user.playWallet),
-      total: Number(user.mainWallet) + Number(user.playWallet),
     };
   }
 

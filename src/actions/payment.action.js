@@ -1,8 +1,8 @@
-const { MESSAGES, SESSION_STATES, CURRENCY } = require('../utils/constants');
-const { TELEBIRR_NUMBER, CBE_ACCOUNT, MIN_DEPOSIT, ADMIN_IDS } = require('../config/env');
+const { SESSION_STATES, CURRENCY } = require('../utils/constants');
 const { cancelKeyboard } = require('../keyboards/main.keyboard');
 const depositService = require('../services/deposit.service');
 const userService = require('../services/user.service');
+const configService = require('../services/config.service');
 
 /**
  * Handle Telebirr payment selection
@@ -13,9 +13,15 @@ const handleTelebirr = async (ctx) => {
     ctx.session.state = SESSION_STATES.AWAITING_DEPOSIT_SMS;
     ctx.session.depositMethod = 'telebirr';
     
-    const message = MESSAGES.DEPOSIT_TELEBIRR
-      .replace('{telebirrNumber}', TELEBIRR_NUMBER)
-      .replace('{minDeposit}', MIN_DEPOSIT);
+    const telebirrNumber = await configService.get('telebirr_number', '0900000000');
+    const telebirrName = await configService.get('telebirr_account_name', 'Mesob Bingo');
+    const minDeposit = await configService.get('min_deposit', 50);
+
+    const message = await configService.getMessage('msg_deposit_telebirr', {
+      telebirrNumber,
+      telebirrName,
+      minDeposit,
+    }, `📱 *Telebirr Deposit*\n\n1. Transfer money to: ${telebirrNumber}\n   Account Name: ${telebirrName}\n2. Take screenshot after transfer\n3. Send screenshot here\n\n⚠️ Minimum: ${minDeposit} ብር`);
     
     await ctx.answerCbQuery();
     await ctx.editMessageText(message, { parse_mode: 'Markdown' });
@@ -34,9 +40,15 @@ const handleCBE = async (ctx) => {
     ctx.session.state = SESSION_STATES.AWAITING_DEPOSIT_SMS;
     ctx.session.depositMethod = 'cbe';
     
-    const message = MESSAGES.DEPOSIT_CBE
-      .replace('{cbeAccount}', CBE_ACCOUNT)
-      .replace('{minDeposit}', MIN_DEPOSIT);
+    const cbeAccount = await configService.get('cbe_account', '1000000000000');
+    const cbeAccountName = await configService.get('cbe_account_name', 'Mesob Bingo');
+    const minDeposit = await configService.get('min_deposit', 50);
+
+    const message = await configService.getMessage('msg_deposit_cbe', {
+      cbeAccount,
+      cbeAccountName,
+      minDeposit,
+    }, `🏦 *CBE Deposit*\n\n1. Deposit to Account: ${cbeAccount}\n   Account Name: ${cbeAccountName}\n2. Copy the SMS you receive\n3. Paste and send the full SMS here\n\n⚠️ Minimum: ${minDeposit} ብር`);
     
     await ctx.answerCbQuery();
     await ctx.editMessageText(message, { parse_mode: 'Markdown' });
@@ -55,8 +67,9 @@ const handleDepositCancel = async (ctx) => {
     ctx.session.state = SESSION_STATES.NONE;
     ctx.session.depositMethod = null;
     
+    const msg = await configService.getMessage('msg_deposit_cancelled', {}, '❌ Deposit cancelled.');
     await ctx.answerCbQuery('Cancelled');
-    await ctx.editMessageText('❌ Deposit cancelled.');
+    await ctx.editMessageText(msg);
   } catch (error) {
     console.error('Error in deposit cancel:', error);
   }
@@ -64,13 +77,11 @@ const handleDepositCancel = async (ctx) => {
 
 /**
  * Register payment actions
- * NOTE: Deposit approve/reject now handled via Admin Dashboard only
  */
 const register = (bot) => {
   bot.action('deposit_telebirr', handleTelebirr);
   bot.action('deposit_cbe', handleCBE);
   bot.action('deposit_cancel', handleDepositCancel);
-  // Approve/reject removed — use dashboard at /deposits
 };
 
 module.exports = { register };

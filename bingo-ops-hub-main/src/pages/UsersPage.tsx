@@ -101,8 +101,10 @@ export default function UsersPage() {
             <thead>
               <tr className="border-b border-border bg-muted/30">
                 <th className="px-3 md:px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">User</th>
-                <th className="px-3 md:px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">Wallet</th>
-                <th className="px-3 md:px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">Total Deposited</th>
+                <th className="px-3 md:px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">Withdrawable</th>
+                <th className="px-3 md:px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">Playing</th>
+                <th className="px-3 md:px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">Total</th>
+                <th className="px-3 md:px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">Deposited</th>
                 <th className="px-3 md:px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">Games</th>
                 <th className="px-3 md:px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">Status</th>
                 <th className="px-3 md:px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">Actions</th>
@@ -117,7 +119,15 @@ export default function UsersPage() {
                       <p className="text-xs text-muted-foreground">ID: {u.telegram_id}</p>
                     </button>
                   </td>
-                  <td className="px-3 md:px-4 py-3 font-mono text-xs md:text-sm whitespace-nowrap">{Number(u.main_wallet).toLocaleString()} ብር</td>
+                  <td className="px-3 md:px-4 py-3 font-mono text-xs md:text-sm whitespace-nowrap">
+                    <span className="text-success">{Number(u.withdrawable_balance || 0).toLocaleString()} ብር</span>
+                  </td>
+                  <td className="px-3 md:px-4 py-3 font-mono text-xs md:text-sm whitespace-nowrap">
+                    <span className="text-primary">{Number(u.playing_balance || 0).toLocaleString()} ብር</span>
+                  </td>
+                  <td className="px-3 md:px-4 py-3 font-mono text-xs md:text-sm whitespace-nowrap font-semibold">
+                    {(Number(u.withdrawable_balance || 0) + Number(u.playing_balance || 0)).toLocaleString()} ብር
+                  </td>
                   <td className="px-3 md:px-4 py-3 font-mono text-xs md:text-sm whitespace-nowrap">{Number(u.total_deposited).toLocaleString()} ብር</td>
                   <td className="px-3 md:px-4 py-3 font-mono text-xs whitespace-nowrap">{u.games_played} / {u.games_won}W</td>
                   <td className="px-3 md:px-4 py-3">
@@ -146,7 +156,7 @@ export default function UsersPage() {
                 </tr>
               ))}
               {users.length === 0 && (
-                <tr><td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">No users found</td></tr>
+                <tr><td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">No users found</td></tr>
               )}
             </tbody>
           </table>
@@ -173,13 +183,23 @@ export default function UsersPage() {
                   <p className="text-xs text-muted-foreground">Phone</p>
                   <p className="font-mono">{selectedUser.phone || "—"}</p>
                 </div>
-                <div className="rounded-lg bg-muted p-3">
-                  <p className="text-xs text-muted-foreground">Main Wallet</p>
-                  <p className="font-mono font-semibold text-primary">{Number(selectedUser.main_wallet).toLocaleString()} ብር</p>
+                <div className="rounded-lg bg-success/10 p-3 border border-success/20">
+                  <p className="text-xs text-muted-foreground">Withdrawable Balance</p>
+                  <p className="font-mono font-semibold text-success">{Number(selectedUser.withdrawable_balance || 0).toLocaleString()} ብር</p>
+                  <p className="text-[10px] text-muted-foreground mt-0.5">Can withdraw</p>
+                </div>
+                <div className="rounded-lg bg-primary/10 p-3 border border-primary/20">
+                  <p className="text-xs text-muted-foreground">Playing Balance</p>
+                  <p className="font-mono font-semibold text-primary">{Number(selectedUser.playing_balance || 0).toLocaleString()} ብር</p>
+                  <p className="text-[10px] text-muted-foreground mt-0.5">Must play first</p>
                 </div>
                 <div className="rounded-lg bg-muted p-3">
-                  <p className="text-xs text-muted-foreground">Bonus Wallet</p>
-                  <p className="font-mono">{Number(selectedUser.bonus_wallet).toLocaleString()} ብር</p>
+                  <p className="text-xs text-muted-foreground">Total Balance</p>
+                  <p className="font-mono font-semibold">{(Number(selectedUser.withdrawable_balance || 0) + Number(selectedUser.playing_balance || 0)).toLocaleString()} ብር</p>
+                </div>
+                <div className="rounded-lg bg-muted p-3">
+                  <p className="text-xs text-muted-foreground">Total Winnings</p>
+                  <p className="font-mono">{Number(selectedUser.total_winnings || 0).toLocaleString()} ብር</p>
                 </div>
                 <div className="rounded-lg bg-muted p-3">
                   <p className="text-xs text-muted-foreground">Total Deposited</p>

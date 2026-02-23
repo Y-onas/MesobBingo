@@ -3,16 +3,32 @@ const { db, pool } = require('../database');
 const { withdrawals, users } = require('../database/schema');
 const userService = require('./user.service');
 const logger = require('../utils/logger');
-const { MIN_WITHDRAW } = require('../config/env');
+const configService = require('./config.service');
 
 /**
  * Create a withdrawal request (now persisted to PostgreSQL, not in-memory)
  * Uses transaction with SELECT FOR UPDATE to prevent race conditions
+ * NEW: Only allows withdrawals from withdrawable_balance (winnings only)
  */
-const createWithdrawal = async (telegramId, amount, method, accountNumber) => {
+const createWithdrawal = async (telegramId, amount, method, accountNumber, accountHolderName) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+
+    // Validation
+    if (!accountHolderName || accountHolderName.trim().length < 3) {
+      await client.query('ROLLBACK');
+      throw new Error('Account holder name is required (minimum 3 characters)');
+    }
+
+    // Kill switch check
+    const withdrawalsEnabled = await configService.get('withdrawals_enabled', true);
+    if (!withdrawalsEnabled) {
+      await client.query('ROLLBACK');
+      throw new Error('Withdrawals are temporarily disabled');
+    }
+
+    const MIN_WITHDRAW = await configService.get('min_withdraw', 150);
 
     // Lock user row for update
     const { rows: [user] } = await client.query(
@@ -30,29 +46,35 @@ const createWithdrawal = async (telegramId, amount, method, accountNumber) => {
       throw new Error(`Minimum withdrawal is ${MIN_WITHDRAW} ብር`);
     }
 
-    const mainBalance = Number(user.main_wallet);
-    if (mainBalance < amount) {
+    // NEW: Check withdrawable balance (winnings only)
+    const withdrawableBalance = Number(user.withdrawable_balance);
+    const playingBalance = Number(user.playing_balance);
+    
+    if (withdrawableBalance < amount) {
       await client.query('ROLLBACK');
-      throw new Error('Insufficient balance');
+      const error = new Error('INSUFFICIENT_WITHDRAWABLE_BALANCE');
+      error.withdrawableBalance = withdrawableBalance;
+      error.playingBalance = playingBalance;
+      throw error;
     }
 
-    // Deduct from wallet atomically
+    // Deduct from withdrawable balance atomically
     await client.query(
-      'UPDATE users SET main_wallet = main_wallet - $1 WHERE telegram_id = $2',
+      'UPDATE users SET withdrawable_balance = withdrawable_balance - $1, main_wallet = main_wallet - $1 WHERE telegram_id = $2',
       [amount, telegramId]
     );
 
-    // Create withdrawal record
+    // Create withdrawal record with account holder name
     const { rows: [withdrawal] } = await client.query(
-      `INSERT INTO withdrawals (telegram_id, amount, method, account_number, status) 
-       VALUES ($1, $2, $3, $4, $5) 
+      `INSERT INTO withdrawals (telegram_id, amount, method, account_number, account_holder_name, status) 
+       VALUES ($1, $2, $3, $4, $5, $6) 
        RETURNING *`,
-      [telegramId, String(amount), method, accountNumber, 'pending']
+      [telegramId, String(amount), method, accountNumber, accountHolderName, 'pending']
     );
 
     await client.query('COMMIT');
 
-    logger.info(`Withdrawal created: ${withdrawal.id} - ${amount} to ${accountNumber}`);
+    logger.info(`Withdrawal created: ${withdrawal.id} - ${amount} to ${accountNumber} (${accountHolderName})`);
     return withdrawal;
   } catch (error) {
     await client.query('ROLLBACK');
@@ -115,8 +137,13 @@ const rejectWithdrawal = async (withdrawalId, adminId, reason = 'Rejected') => {
       throw new Error('Withdrawal not found or already processed');
     }
 
-    // Refund the amount
-    await userService.updateBalance(updated.telegramId, 'main', Number(updated.amount));
+    // Refund the amount to withdrawable balance (and legacy main_wallet)
+    await db.update(users)
+      .set({
+        withdrawableBalance: sql`${users.withdrawableBalance} + ${Number(updated.amount)}`,
+        mainWallet: sql`${users.mainWallet} + ${Number(updated.amount)}`,
+      })
+      .where(eq(users.telegramId, updated.telegramId));
 
     logger.info(`Withdrawal rejected and refunded: ${withdrawalId} by admin ${adminId}`);
     return updated;

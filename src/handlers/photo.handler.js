@@ -2,7 +2,8 @@ const { SESSION_STATES, CURRENCY } = require('../utils/constants');
 const { mainKeyboard } = require('../keyboards/main.keyboard');
 const { depositConfirmKeyboard } = require('../keyboards/deposit.keyboard');
 const depositService = require('../services/deposit.service');
-const { MIN_DEPOSIT, ADMIN_IDS } = require('../config/env');
+const configService = require('../services/config.service');
+const { getAllAdmins } = require('../config/admin');
 
 /**
  * Handle photo messages (deposit screenshots)
@@ -25,11 +26,13 @@ const photoHandler = async (ctx) => {
     ctx.session.screenshotFileId = fileId;
     ctx.session.state = SESSION_STATES.AWAITING_DEPOSIT_SMS; // Reuse for amount
     
+    const minDeposit = await configService.get('min_deposit', 50);
+
     await ctx.reply(`📸 Screenshot received!
 
 Please enter the deposit amount (e.g., 100 or 500):
 
-⚠️ Minimum deposit: ${MIN_DEPOSIT} ${CURRENCY}`);
+⚠️ Minimum deposit: ${minDeposit} ${CURRENCY}`);
     
   } catch (error) {
     console.error('Error in photo handler:', error);
@@ -71,10 +74,12 @@ Your deposit will be reviewed shortly.`, {
       ...mainKeyboard()
     });
     
-    // Forward to admins
-    for (const adminId of ADMIN_IDS) {
+    // Forward to admins (from DB)
+    const allAdmins = await getAllAdmins();
+    const activeAdmins = allAdmins.filter(a => a.isActive);
+    for (const admin of activeAdmins) {
       try {
-        await ctx.telegram.sendPhoto(adminId, fileId, {
+        await ctx.telegram.sendPhoto(admin.telegramId, fileId, {
           caption: `💳 *New ${method.toUpperCase()} Deposit*
 
 👤 User: ${ctx.from.first_name || ctx.from.id}

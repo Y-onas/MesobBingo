@@ -61,8 +61,8 @@ export default function DepositsPage() {
   });
 
   const canReview = (d: any) => d.status === "pending";
-  const canApproveReject = (d: any) => d.status === "under_review" && d.assigned_admin === ADMIN_ID();
-  const isLocked = (d: any) => d.status === "under_review" && d.assigned_admin && d.assigned_admin !== ADMIN_ID();
+  const canApproveReject = (d: any) => d.status === "under_review" && String(d.assigned_admin) === String(ADMIN_ID());
+  const isLocked = (d: any) => d.status === "under_review" && d.assigned_admin && String(d.assigned_admin) !== String(ADMIN_ID());
 
   if (isLoading) {
     return (
@@ -242,15 +242,15 @@ export default function DepositsPage() {
         <DialogContent className="bg-card border-border">
           <DialogHeader><DialogTitle>Reject Deposit</DialogTitle></DialogHeader>
           <div className="space-y-3">
-            <p className="text-sm text-muted-foreground">Please provide a reason for rejecting this deposit.</p>
-            <Textarea placeholder="Enter rejection reason..." value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} className="bg-muted border-border" />
+            <p className="text-sm text-muted-foreground">Rejection reason is optional. Leave blank to use default reason.</p>
+            <Textarea placeholder="Enter rejection reason (optional)..." value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} className="bg-muted border-border" />
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowRejectDialog(false)}>Cancel</Button>
             <Button
               variant="destructive"
-              onClick={() => selectedDeposit && rejectMutation.mutate({ id: selectedDeposit.id, reason: rejectReason })}
-              disabled={!rejectReason.trim() || rejectMutation.isPending}
+              onClick={() => selectedDeposit && rejectMutation.mutate({ id: selectedDeposit.id, reason: rejectReason.trim() || 'Rejected by admin' })}
+              disabled={rejectMutation.isPending}
             >
               Confirm Rejection
             </Button>

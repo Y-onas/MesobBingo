@@ -1,12 +1,13 @@
 const { isAdmin } = require('../config/admin');
-const { MESSAGES } = require('../utils/constants');
+const configService = require('../services/config.service');
 
 /**
  * Admin-only middleware
  */
 const adminOnly = async (ctx, next) => {
-  if (!isAdmin(ctx.from.id)) {
-    return ctx.reply(MESSAGES.ADMIN_ONLY);
+  if (!await isAdmin(ctx.from.id)) {
+    const msg = await configService.getMessage('msg_admin_only', {}, '⚠️ This command is for admins only.');
+    return ctx.reply(msg);
   }
   return next();
 };
@@ -15,7 +16,7 @@ const adminOnly = async (ctx, next) => {
  * Check if user is admin (non-blocking)
  */
 const checkAdmin = async (ctx, next) => {
-  ctx.isAdmin = isAdmin(ctx.from.id);
+  ctx.isAdmin = await isAdmin(ctx.from.id);
   return next();
 };
 

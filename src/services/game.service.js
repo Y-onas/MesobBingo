@@ -13,7 +13,8 @@ const { users } = require('../database/schema');
 const userService = require('./user.service');
 const logger = require('../utils/logger');
 const { generateBingoNumbers, checkWin } = require('../utils/helpers');
-const { GAME_STAKES } = require('../utils/constants');
+const configService = require('./config.service');
+const configService = require('./config.service');
 
 // In-memory game state (game sessions are ephemeral, DB not needed)
 const activeGames = new Map();
@@ -88,6 +89,12 @@ const playGame = async (telegramId) => {
 
   const client = await pool.connect();
   try {
+    // Kill switch check
+    const gamesEnabled = await configService.get('games_enabled', true);
+    if (!gamesEnabled) {
+      throw new Error('Games are temporarily disabled');
+    }
+
     await client.query('BEGIN');
 
     // Lock user row for update
@@ -186,8 +193,9 @@ const cancelGame = (telegramId) => {
 /**
  * Validate stake amount
  */
-const isValidStake = (stake) => {
-  return GAME_STAKES.includes(stake);
+const isValidStake = async (stake) => {
+  const stakes = await configService.get('game_stakes', [10, 20, 50, 100]);
+  return stakes.includes(stake);
 };
 
 module.exports = {

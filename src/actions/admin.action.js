@@ -10,7 +10,7 @@ const depositService = require('../services/deposit.service');
  */
 const handleAdminStats = async (ctx) => {
   try {
-    if (!isAdmin(ctx.from.id)) {
+    if (!await isAdmin(ctx.from.id)) {
       return ctx.answerCbQuery('Unauthorized');
     }
     
@@ -44,7 +44,7 @@ const handleAdminStats = async (ctx) => {
  */
 const handlePendingDeposits = async (ctx) => {
   try {
-    if (!isAdmin(ctx.from.id)) {
+    if (!await isAdmin(ctx.from.id)) {
       return ctx.answerCbQuery('Unauthorized');
     }
     
@@ -84,7 +84,7 @@ Showing most recent deposits...`, { parse_mode: 'Markdown' });
  */
 const handleBroadcastAll = async (ctx) => {
   try {
-    if (!isAdmin(ctx.from.id)) {
+    if (!await isAdmin(ctx.from.id)) {
       return ctx.answerCbQuery('Unauthorized');
     }
     
@@ -97,6 +97,8 @@ const handleBroadcastAll = async (ctx) => {
 
 Reply with the message you want to send to all users.
 
+You can add interactive buttons in the next step.
+
 Type 'cancel' to cancel.`, { parse_mode: 'Markdown' });
   } catch (error) {
     console.error('Error in broadcast all:', error);
@@ -108,7 +110,7 @@ Type 'cancel' to cancel.`, { parse_mode: 'Markdown' });
  */
 const handleBroadcastDepositors = async (ctx) => {
   try {
-    if (!isAdmin(ctx.from.id)) {
+    if (!await isAdmin(ctx.from.id)) {
       return ctx.answerCbQuery('Unauthorized');
     }
     
@@ -120,6 +122,8 @@ const handleBroadcastDepositors = async (ctx) => {
     await ctx.editMessageText(`📢 *Broadcast to Depositors Only*
 
 Reply with the message you want to send to depositors.
+
+You can add interactive buttons in the next step.
 
 Type 'cancel' to cancel.`, { parse_mode: 'Markdown' });
   } catch (error) {
@@ -154,20 +158,126 @@ const register = (bot) => {
   bot.action('admin_back', handleAdminBack);
   bot.action('admin_users', handleAdminStats); // Reuse stats for now
   bot.action('admin_pending_withdrawals', async (ctx) => {
-    if (!isAdmin(ctx.from.id)) return ctx.answerCbQuery('Unauthorized');
+    if (!await isAdmin(ctx.from.id)) return ctx.answerCbQuery('Unauthorized');
     await ctx.answerCbQuery('Coming soon...');
   });
   bot.action('admin_broadcast', async (ctx) => {
-    if (!isAdmin(ctx.from.id)) return ctx.answerCbQuery('Unauthorized');
+    if (!await isAdmin(ctx.from.id)) return ctx.answerCbQuery('Unauthorized');
     const { broadcastTypeKeyboard } = require('../keyboards/admin.keyboard');
     await ctx.answerCbQuery();
     await ctx.editMessageText('📢 Select broadcast type:', broadcastTypeKeyboard());
   });
   bot.action('admin_add_bonus', async (ctx) => {
-    if (!isAdmin(ctx.from.id)) return ctx.answerCbQuery('Unauthorized');
+    if (!await isAdmin(ctx.from.id)) return ctx.answerCbQuery('Unauthorized');
     await ctx.answerCbQuery();
     await ctx.reply('Use /bonus [userId] [amount] to add bonus.');
   });
+  
+  // Broadcast action buttons
+  bot.action('broadcast_add_play', handleBroadcastAddButton('play'));
+  bot.action('broadcast_add_deposit', handleBroadcastAddButton('deposit'));
+  bot.action('broadcast_add_balance', handleBroadcastAddButton('balance'));
+  bot.action('broadcast_add_invite', handleBroadcastAddButton('invite'));
+  bot.action('broadcast_send_plain', handleBroadcastSendPlain);
+};
+
+/**
+ * Handle adding button to broadcast
+ */
+const handleBroadcastAddButton = (buttonType) => async (ctx) => {
+  try {
+    if (!await isAdmin(ctx.from.id)) {
+      return ctx.answerCbQuery('Unauthorized');
+    }
+    
+    ctx.session = ctx.session || {};
+    ctx.session.broadcastButton = buttonType;
+    
+    await ctx.answerCbQuery();
+    await ctx.reply('📢 Broadcasting message with button...');
+    
+    const { Markup } = require('telegraf');
+    const { EMOJI } = require('../utils/constants');
+    const configService = require('../services/config.service');
+    
+    // Get bot username from dynamic config
+    const botUsername = await configService.get('bot_username', 'your_bot_username');
+    
+    // Create button based on type
+    let buttonText, buttonUrl;
+    
+    switch (buttonType) {
+      case 'play':
+        buttonText = `${EMOJI.PLAY} Play`;
+        buttonUrl = `https://t.me/${botUsername}?start=play`;
+        break;
+      case 'deposit':
+        buttonText = `${EMOJI.DEPOSIT} Deposit`;
+        buttonUrl = `https://t.me/${botUsername}?start=deposit`;
+        break;
+      case 'balance':
+        buttonText = `${EMOJI.BALANCE} Check Balance`;
+        buttonUrl = `https://t.me/${botUsername}?start=balance`;
+        break;
+      case 'invite':
+        buttonText = `${EMOJI.INVITE} Invite Friends`;
+        buttonUrl = `https://t.me/${botUsername}?start=invite`;
+        break;
+      default:
+        buttonText = 'Open Bot';
+        buttonUrl = `https://t.me/${botUsername}`;
+    }
+    
+    const keyboard = Markup.inlineKeyboard([
+      [Markup.button.url(buttonText, buttonUrl)]
+    ]);
+    
+    const result = await adminService.broadcastMessage(
+      ctx,
+      ctx.session.broadcastMessage,
+      ctx.session.broadcastType === 'depositors',
+      keyboard
+    );
+    
+    ctx.session.broadcastMessage = null;
+    ctx.session.broadcastButton = null;
+    
+    await ctx.reply(`✅ *Broadcast Complete*
+
+✅ Sent: ${result.success}
+❌ Failed: ${result.failed}`, { parse_mode: 'Markdown' });
+  } catch (error) {
+    console.error('Error in broadcast add button:', error);
+  }
+};
+
+/**
+ * Handle sending broadcast without buttons
+ */
+const handleBroadcastSendPlain = async (ctx) => {
+  try {
+    if (!await isAdmin(ctx.from.id)) {
+      return ctx.answerCbQuery('Unauthorized');
+    }
+    
+    await ctx.answerCbQuery();
+    await ctx.reply('📢 Broadcasting message...');
+    
+    const result = await adminService.broadcastMessage(
+      ctx,
+      ctx.session.broadcastMessage,
+      ctx.session.broadcastType === 'depositors'
+    );
+    
+    ctx.session.broadcastMessage = null;
+    
+    await ctx.reply(`✅ *Broadcast Complete*
+
+✅ Sent: ${result.success}
+❌ Failed: ${result.failed}`, { parse_mode: 'Markdown' });
+  } catch (error) {
+    console.error('Error in broadcast send plain:', error);
+  }
 };
 
 module.exports = { register };

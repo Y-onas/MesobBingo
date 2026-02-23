@@ -26,7 +26,7 @@ const contactHandler = async (ctx) => {
     }
 
     // Select keyboard based on admin status
-    const keyboard = isAdmin(ctx.from.id) ? adminKeyboard() : mainKeyboard();
+    const keyboard = await isAdmin(ctx.from.id) ? adminKeyboard() : mainKeyboard();
 
     if (user.bonusClaimed) {
       // Bonus was just claimed (first time sharing contact)

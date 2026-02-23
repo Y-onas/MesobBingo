@@ -1,4 +1,5 @@
-const { MESSAGES, CURRENCY } = require('../../utils/constants');
+const { CURRENCY } = require('../../utils/constants');
+const configService = require('../../services/config.service');
 const userService = require('../../services/user.service');
 
 /**
@@ -12,14 +13,25 @@ const balanceCommand = async (ctx) => {
       return ctx.reply('Please use /start first.');
     }
     
-    const total = Number(user.mainWallet) + Number(user.playWallet);
+    // New balance system
+    const withdrawable = Number(user.withdrawableBalance).toFixed(2);
+    const playing = Number(user.playingBalance).toFixed(2);
+    const total = (Number(user.withdrawableBalance) + Number(user.playingBalance)).toFixed(2);
     
-    const message = `💰 *BALANCE SUMMARY* 💰
+    const message = await configService.getMessage('msg_balance', {
+      withdrawable,
+      playing,
+      total,
+    }, `💰 *YOUR BALANCE*
 
-🏦 Main Wallet: ${Number(user.mainWallet).toFixed(2)} ${CURRENCY}
-🎁 Play Wallet: ${Number(user.playWallet).toFixed(2)} ${CURRENCY}
-━━━━━━━━━━━━━━━━
-💵 Total Balance: ${total.toFixed(2)} ${CURRENCY}`;
+✅ *Withdrawable:* ${withdrawable} ${CURRENCY}
+   (Real winnings - can withdraw)
+
+🎮 *Playing Balance:* ${playing} ${CURRENCY}
+   (Deposits & bonuses - must play)
+
+━━━━━━━━━━━━━━━━━━━━━━
+💵 *Total:* ${total} ${CURRENCY}`);
     
     await ctx.reply(message, { parse_mode: 'Markdown' });
   } catch (error) {

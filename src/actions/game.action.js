@@ -23,7 +23,7 @@ const handlePlayStart = async (ctx) => {
 
 Choose how much you want to bet:`, {
       parse_mode: 'Markdown',
-      ...stakeKeyboard()
+      ...(await stakeKeyboard())
     });
   } catch (error) {
     console.error('Error in play start:', error);
@@ -233,7 +233,7 @@ const handleBackToStake = async (ctx) => {
 
 Choose how much you want to bet:`, {
       parse_mode: 'Markdown',
-      ...stakeKeyboard()
+      ...(await stakeKeyboard())
     });
   } catch (error) {
     console.error('Error in back to stake:', error);

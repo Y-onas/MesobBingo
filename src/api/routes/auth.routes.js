@@ -1,25 +1,26 @@
 const { Router } = require('express');
 const rateLimit = require('express-rate-limit');
 const jwt = require('jsonwebtoken');
-const { ADMIN_IDS, JWT_SECRET, JWT_EXPIRES_IN } = require('../../config/env');
+const { JWT_SECRET, JWT_EXPIRES_IN } = require('../../config/env');
+const { isAdmin, getAdminRole } = require('../../config/admin');
 const logger = require('../../utils/logger');
 
 const router = Router();
 
-// Rate limiter for login endpoint - prevents brute force and admin ID enumeration
+// Rate limiter for login endpoint
 const loginLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 5, // Limit each IP to 5 login attempts per windowMs
+  windowMs: 15 * 60 * 1000,
+  max: 5,
   message: { error: 'Too many login attempts, please try again later' },
-  standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
-  legacyHeaders: false, // Disable the `X-RateLimit-*` headers
+  standardHeaders: true,
+  legacyHeaders: false,
   handler: (req, res) => {
     logger.warn(`Rate limit exceeded for IP: ${req.ip}`);
     res.status(429).json({ error: 'Too many login attempts, please try again later' });
   },
 });
 
-// POST /api/auth/login — verify admin and issue JWT token
+// POST /api/auth/login — verify admin (DB-based) and issue JWT token
 router.post('/login', loginLimiter, async (req, res) => {
   try {
     const { telegramId } = req.body;
@@ -28,11 +29,12 @@ router.post('/login', loginLimiter, async (req, res) => {
       return res.status(400).json({ error: 'Telegram ID is required' });
     }
 
-    // Check if telegram ID is in ADMIN_IDS
-    const adminIds = ADMIN_IDS.map(id => id.toString().trim());
-    const isAdmin = adminIds.includes(telegramId.toString().trim());
+    const telegramIdNum = parseInt(telegramId);
 
-    if (!isAdmin) {
+    // Check admin status from database
+    const adminIsValid = await isAdmin(telegramIdNum);
+
+    if (!adminIsValid) {
       logger.warn(`Failed admin login attempt: ${telegramId}`);
       return res.status(403).json({
         isAdmin: false,
@@ -40,23 +42,27 @@ router.post('/login', loginLimiter, async (req, res) => {
       });
     }
 
+    // Get role from database
+    const role = await getAdminRole(telegramIdNum) || 'support_admin';
+
     // Generate JWT token
     const token = jwt.sign(
       { 
-        telegramId,
-        role: 'admin',
+        telegramId: telegramIdNum,
+        role,
         name: `Admin ${telegramId}`
       },
       JWT_SECRET,
       { expiresIn: JWT_EXPIRES_IN }
     );
 
-    logger.info(`Admin login successful: ${telegramId}`);
+    logger.info(`Admin login successful: ${telegramId} (role: ${role})`);
 
     res.json({
       isAdmin: true,
-      telegramId,
+      telegramId: telegramIdNum,
       name: `Admin ${telegramId}`,
+      role,
       token,
       expiresIn: JWT_EXPIRES_IN
     });
@@ -66,7 +72,7 @@ router.post('/login', loginLimiter, async (req, res) => {
   }
 });
 
-// POST /api/auth/verify — verify JWT token (for token refresh/validation)
+// POST /api/auth/verify — verify JWT token
 router.post('/verify', async (req, res) => {
   try {
     const authHeader = req.headers.authorization;
@@ -107,14 +113,16 @@ router.post('/verify-admin', loginLimiter, async (req, res) => {
       return res.status(400).json({ error: 'Telegram ID is required' });
     }
 
-    const adminIds = ADMIN_IDS.map(id => id.toString().trim());
-    const isAdmin = adminIds.includes(telegramId.toString().trim());
+    const telegramIdNum = parseInt(telegramId);
+    const adminIsValid = await isAdmin(telegramIdNum);
 
-    if (isAdmin) {
+    if (adminIsValid) {
+      const role = await getAdminRole(telegramIdNum);
       res.json({
         isAdmin: true,
-        telegramId,
+        telegramId: telegramIdNum,
         name: `Admin ${telegramId}`,
+        role,
       });
     } else {
       res.status(403).json({

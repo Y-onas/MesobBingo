@@ -58,8 +58,29 @@ const broadcastTypeKeyboard = () => {
   ]);
 };
 
+/**
+ * Broadcast action buttons keyboard
+ */
+const broadcastActionsKeyboard = () => {
+  return Markup.inlineKeyboard([
+    [
+      Markup.button.callback('🎮 Add Play Button', 'broadcast_add_play'),
+      Markup.button.callback('💰 Add Deposit Button', 'broadcast_add_deposit')
+    ],
+    [
+      Markup.button.callback('💳 Add Balance Button', 'broadcast_add_balance'),
+      Markup.button.callback('🎁 Add Invite Button', 'broadcast_add_invite')
+    ],
+    [
+      Markup.button.callback('📤 Send Without Buttons', 'broadcast_send_plain'),
+      Markup.button.callback('❌ Cancel', 'admin_back')
+    ]
+  ]);
+};
+
 module.exports = {
   adminPanelKeyboard,
   userManagementKeyboard,
-  broadcastTypeKeyboard
+  broadcastTypeKeyboard,
+  broadcastActionsKeyboard
 };

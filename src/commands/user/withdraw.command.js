@@ -1,5 +1,5 @@
-const { MESSAGES, SESSION_STATES } = require('../../utils/constants');
-const { MIN_WITHDRAW } = require('../../config/env');
+const { SESSION_STATES } = require('../../utils/constants');
+const configService = require('../../services/config.service');
 const { cancelKeyboard } = require('../../keyboards/main.keyboard');
 
 /**
@@ -11,7 +11,10 @@ const withdrawCommand = async (ctx) => {
     ctx.session = ctx.session || {};
     ctx.session.state = SESSION_STATES.AWAITING_WITHDRAW_AMOUNT;
     
-    const message = MESSAGES.WITHDRAW_PROMPT.replace('{minWithdraw}', MIN_WITHDRAW);
+    const minWithdraw = await configService.get('min_withdraw', 150);
+    const message = await configService.getMessage('msg_withdraw_prompt', {
+      minWithdraw,
+    }, `🏧 *Withdraw*\n\nEnter the amount to withdraw. Type cancel to stop.\n\n⚠️ ዝቅተኛ: ${minWithdraw} ብር`);
     
     await ctx.reply(message, {
       parse_mode: 'Markdown',

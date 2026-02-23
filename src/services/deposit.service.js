@@ -3,12 +3,19 @@ const { db } = require('../database');
 const { deposits, users } = require('../database/schema');
 const userService = require('./user.service');
 const logger = require('../utils/logger');
+const configService = require('./config.service');
 
 /**
  * Create a new deposit request
  */
 const createDeposit = async (telegramId, amount, method, screenshotFileId = null, transactionRef = null, smsText = null) => {
   try {
+    // Kill switch check
+    const depositsEnabled = await configService.get('deposits_enabled', true);
+    if (!depositsEnabled) {
+      throw new Error('Deposits are temporarily disabled');
+    }
+
     const [deposit] = await db.insert(deposits).values({
       telegramId,
       amount: String(amount),
@@ -45,8 +52,14 @@ const approveDeposit = async (depositId, adminId) => {
       throw new Error('Deposit not found or already processed');
     }
 
-    // Add amount to user's main wallet
-    await userService.updateBalance(updated.telegramId, 'main', Number(updated.amount));
+    // Add amount to user's playing balance (NEW SYSTEM - deposits are not withdrawable)
+    await db.update(users)
+      .set({
+        playingBalance: sql`${users.playingBalance} + ${Number(updated.amount)}`,
+        // Also update legacy main_wallet for backward compatibility
+        mainWallet: sql`${users.mainWallet} + ${Number(updated.amount)}`,
+      })
+      .where(eq(users.telegramId, updated.telegramId));
 
     // Increment deposit count and total
     await db.update(users)
