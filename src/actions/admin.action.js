@@ -5,6 +5,9 @@ const { mainKeyboard } = require('../keyboards/main.keyboard');
 const adminService = require('../services/admin.service');
 const depositService = require('../services/deposit.service');
 
+// Store bot instance for use in handlers
+let botInstance = null;
+
 /**
  * Handle admin stats
  */
@@ -148,9 +151,105 @@ const handleAdminBack = async (ctx) => {
 };
 
 /**
+ * Handle adding button to broadcast
+ */
+const handleBroadcastAddButton = (buttonType) => async (ctx) => {
+  try {
+    if (!await isAdmin(ctx.from.id)) {
+      return ctx.answerCbQuery('Unauthorized');
+    }
+    
+    ctx.session = ctx.session || {};
+    
+    if (!ctx.session.broadcastMessage) {
+      await ctx.answerCbQuery();
+      return ctx.reply('❌ Broadcast message not found. Please start the broadcast flow again.');
+    }
+    
+    ctx.session.broadcastButton = buttonType;
+    
+    await ctx.answerCbQuery();
+    await ctx.reply('📢 Broadcasting message with button...');
+    
+    const configService = require('../services/config.service');
+    const { buildBroadcastKeyboard } = require('../utils/broadcast-helper');
+    
+    // Get bot username from dynamic config and normalize it
+    let botUsername = await configService.get('bot_username', 'your_bot_username');
+    
+    // Normalize: trim whitespace and remove leading '@' if present
+    if (botUsername) {
+      botUsername = botUsername.trim().replace(/^@/, '');
+    }
+    
+    if (!botUsername || botUsername === 'your_bot_username') {
+      return ctx.reply('❌ Bot username not configured. Please ask an admin to set bot_username in system config.');
+    }
+    
+    const keyboard = buildBroadcastKeyboard(buttonType, botUsername);
+    
+    const result = await adminService.broadcastMessage(
+      botInstance,
+      ctx.session.broadcastMessage,
+      ctx.session.broadcastType === 'depositors',
+      keyboard
+    );
+    
+    ctx.session.broadcastMessage = null;
+    ctx.session.broadcastButton = null;
+    
+    await ctx.reply(`✅ *Broadcast Complete*
+
+✅ Sent: ${result.success}
+❌ Failed: ${result.failed}`, { parse_mode: 'Markdown' });
+  } catch (error) {
+    console.error('Error in broadcast add button:', error);
+    await ctx.reply('❌ An error occurred while broadcasting. Please try again.');
+  }
+};
+
+/**
+ * Handle sending broadcast without buttons
+ */
+const handleBroadcastSendPlain = async (ctx) => {
+  try {
+    if (!await isAdmin(ctx.from.id)) {
+      return ctx.answerCbQuery('Unauthorized');
+    }
+    
+    await ctx.answerCbQuery();
+    
+    if (!ctx.session?.broadcastMessage) {
+      return ctx.reply('❌ Broadcast message not found. Please start the broadcast flow again.');
+    }
+    
+    await ctx.reply('📢 Broadcasting message...');
+    
+    const result = await adminService.broadcastMessage(
+      botInstance,
+      ctx.session.broadcastMessage,
+      ctx.session.broadcastType === 'depositors'
+    );
+    
+    ctx.session.broadcastMessage = null;
+    
+    await ctx.reply(`✅ *Broadcast Complete*
+
+✅ Sent: ${result.success}
+❌ Failed: ${result.failed}`, { parse_mode: 'Markdown' });
+  } catch (error) {
+    console.error('Error in broadcast send plain:', error);
+    await ctx.reply('❌ An error occurred while broadcasting. Please try again.');
+  }
+};
+
+/**
  * Register admin actions
  */
 const register = (bot) => {
+  // Store bot instance for handlers
+  botInstance = bot;
+  
   bot.action('admin_stats', handleAdminStats);
   bot.action('admin_pending_deposits', handlePendingDeposits);
   bot.action('broadcast_all', handleBroadcastAll);
@@ -179,92 +278,6 @@ const register = (bot) => {
   bot.action('broadcast_add_balance', handleBroadcastAddButton('balance'));
   bot.action('broadcast_add_invite', handleBroadcastAddButton('invite'));
   bot.action('broadcast_send_plain', handleBroadcastSendPlain);
-};
-
-/**
- * Handle adding button to broadcast
- */
-const handleBroadcastAddButton = (buttonType) => async (ctx) => {
-  try {
-    if (!await isAdmin(ctx.from.id)) {
-      return ctx.answerCbQuery('Unauthorized');
-    }
-    
-    ctx.session = ctx.session || {};
-    
-    if (!ctx.session.broadcastMessage) {
-      await ctx.answerCbQuery();
-      return ctx.reply('❌ Broadcast message not found. Please start the broadcast flow again.');
-    }
-    
-    ctx.session.broadcastButton = buttonType;
-    
-    await ctx.answerCbQuery();
-    await ctx.reply('📢 Broadcasting message with button...');
-    
-    const configService = require('../services/config.service');
-    const { buildBroadcastKeyboard } = require('../utils/broadcast-helper');
-    
-    // Get bot username from dynamic config
-    const botUsername = await configService.get('bot_username', 'your_bot_username');
-    
-    if (!botUsername || botUsername === 'your_bot_username') {
-      return ctx.reply('❌ Bot username not configured. Please ask an admin to set bot_username in system config.');
-    }
-    
-    const keyboard = buildBroadcastKeyboard(buttonType, botUsername);
-    
-    const result = await adminService.broadcastMessage(
-      ctx.telegram,
-      ctx.session.broadcastMessage,
-      ctx.session.broadcastType === 'depositors',
-      keyboard
-    );
-    
-    ctx.session.broadcastMessage = null;
-    ctx.session.broadcastButton = null;
-    
-    await ctx.reply(`✅ *Broadcast Complete*
-
-✅ Sent: ${result.success}
-❌ Failed: ${result.failed}`, { parse_mode: 'Markdown' });
-  } catch (error) {
-    console.error('Error in broadcast add button:', error);
-  }
-};
-
-/**
- * Handle sending broadcast without buttons
- */
-const handleBroadcastSendPlain = async (ctx) => {
-  try {
-    if (!await isAdmin(ctx.from.id)) {
-      return ctx.answerCbQuery('Unauthorized');
-    }
-    
-    await ctx.answerCbQuery();
-    
-    if (!ctx.session?.broadcastMessage) {
-      return ctx.reply('❌ Broadcast message not found. Please start the broadcast flow again.');
-    }
-    
-    await ctx.reply('📢 Broadcasting message...');
-    
-    const result = await adminService.broadcastMessage(
-      ctx.telegram,
-      ctx.session.broadcastMessage,
-      ctx.session.broadcastType === 'depositors'
-    );
-    
-    ctx.session.broadcastMessage = null;
-    
-    await ctx.reply(`✅ *Broadcast Complete*
-
-✅ Sent: ${result.success}
-❌ Failed: ${result.failed}`, { parse_mode: 'Markdown' });
-  } catch (error) {
-    console.error('Error in broadcast send plain:', error);
-  }
 };
 
 module.exports = { register };

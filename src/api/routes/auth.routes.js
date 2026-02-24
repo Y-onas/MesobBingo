@@ -124,10 +124,10 @@ router.post('/verify-admin', loginLimiter, async (req, res) => {
       return res.status(400).json({ error: 'Telegram ID must be a valid positive number' });
     }
     
-    const adminIsValid = await isAdmin(telegramIdNum);
+    // getAdminRole returns null for non-admins, so we only need one DB call
+    const role = await getAdminRole(telegramIdNum);
 
-    if (adminIsValid) {
-      const role = await getAdminRole(telegramIdNum);
+    if (role) {
       res.json({
         isAdmin: true,
         telegramId: telegramIdNum,

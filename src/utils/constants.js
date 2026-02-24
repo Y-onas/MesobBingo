@@ -63,8 +63,8 @@ Share your personal link to earn bonuses!
 💰 Earn bonus on your referral's FIRST deposit:
 
 📊 *Bonus Tiers:*
-• 50-99 ${CURRENCY} → Get 5 ${CURRENCY}
-• 100-199 ${CURRENCY} → Get 10 ${CURRENCY}  
+• 50-99 ${CURRENCY} → Get 10 ${CURRENCY}
+• 100-199 ${CURRENCY} → Get 15 ${CURRENCY}  
 • 200-499 ${CURRENCY} → Get 20 ${CURRENCY}
 • 500+ ${CURRENCY} → Get 30 ${CURRENCY}
 

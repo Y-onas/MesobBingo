@@ -5,7 +5,7 @@
 const { Router } = require('express');
 const { db } = require('../../database');
 const { admins, auditLogs } = require('../../database/schema');
-const { eq } = require('drizzle-orm');
+const { eq, ne, and } = require('drizzle-orm');
 const { ROLES, hasPermission, clearAdminCache, getAllAdmins } = require('../../config/admin');
 const logger = require('../../utils/logger');
 
@@ -25,7 +25,7 @@ router.get('/', async (req, res) => {
     res.json(allAdmins);
   } catch (error) {
     logger.error('Error fetching admins:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -45,8 +45,8 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ error: 'telegramId and name are required' });
     }
 
-    const parsedTelegramId = parseInt(telegramId);
-    if (isNaN(parsedTelegramId)) {
+    const parsedTelegramId = Number(telegramId);
+    if (!Number.isSafeInteger(parsedTelegramId) || parsedTelegramId <= 0) {
       return res.status(400).json({ error: 'telegramId must be a valid number' });
     }
 
@@ -82,7 +82,7 @@ router.post('/', async (req, res) => {
     if (error.code === '23505') {
       return res.status(400).json({ error: 'Admin with this Telegram ID already exists' });
     }
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -96,21 +96,28 @@ router.patch('/:id/deactivate', async (req, res) => {
       return res.status(403).json({ error: 'Insufficient permissions' });
     }
 
-    const targetId = parseInt(req.params.id);
+    const targetId = Number(req.params.id);
+    if (!Number.isSafeInteger(targetId) || targetId <= 0) {
+      return res.status(400).json({ error: 'Invalid admin ID' });
+    }
 
-    // Prevent self-deactivation
+    // Prevent self-deactivation with defensive WHERE clause to avoid TOCTOU
     const [target] = await db.select().from(admins).where(eq(admins.id, targetId));
     if (target && String(target.telegramId) === String(requesterId)) {
       return res.status(400).json({ error: 'Cannot deactivate your own account' });
     }
 
+    // Update with defensive WHERE clause: only update if telegramId != requesterId
     const [updated] = await db.update(admins)
       .set({ isActive: false })
-      .where(eq(admins.id, targetId))
+      .where(and(
+        eq(admins.id, targetId),
+        ne(admins.telegramId, String(requesterId))
+      ))
       .returning();
 
     if (!updated) {
-      return res.status(404).json({ error: 'Admin not found' });
+      return res.status(404).json({ error: 'Admin not found or cannot deactivate your own account' });
     }
 
     clearAdminCache();
@@ -127,7 +134,7 @@ router.patch('/:id/deactivate', async (req, res) => {
     res.json(updated);
   } catch (error) {
     logger.error('Error deactivating admin:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -141,7 +148,10 @@ router.patch('/:id/activate', async (req, res) => {
       return res.status(403).json({ error: 'Insufficient permissions' });
     }
 
-    const targetId = parseInt(req.params.id);
+    const targetId = Number(req.params.id);
+    if (!Number.isSafeInteger(targetId) || targetId <= 0) {
+      return res.status(400).json({ error: 'Invalid admin ID' });
+    }
 
     const [updated] = await db.update(admins)
       .set({ isActive: true })
@@ -157,16 +167,16 @@ router.patch('/:id/activate', async (req, res) => {
     await db.insert(auditLogs).values({
       adminId: String(requesterId),
       adminName: req.adminName || `Admin ${requesterId}`,
-      actionType: 'admin_reactivated',
-      details: `Reactivated admin: ${updated.name} (${updated.telegramId})`,
+      actionType: 'admin_activated',
+      details: `Activated admin: ${updated.name} (${updated.telegramId})`,
       ipAddress: req.adminIp || req.ip,
     });
 
-    logger.info(`Admin reactivated: ${updated.name} (${updated.telegramId}) by ${requesterId}`);
+    logger.info(`Admin activated: ${updated.name} (${updated.telegramId}) by ${requesterId}`);
     res.json(updated);
   } catch (error) {
     logger.error('Error reactivating admin:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -180,7 +190,11 @@ router.patch('/:id/role', async (req, res) => {
       return res.status(403).json({ error: 'Insufficient permissions' });
     }
 
-    const targetId = parseInt(req.params.id);
+    const targetId = Number(req.params.id);
+    if (!Number.isSafeInteger(targetId) || targetId <= 0) {
+      return res.status(400).json({ error: 'Invalid admin ID' });
+    }
+    
     const { role } = req.body;
 
     if (!Object.values(ROLES).includes(role)) {
@@ -210,7 +224,7 @@ router.patch('/:id/role', async (req, res) => {
     res.json(updated);
   } catch (error) {
     logger.error('Error updating admin role:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 

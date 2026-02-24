@@ -155,19 +155,23 @@ router.post('/:telegramId/adjust-wallet', async (req, res) => {
         return res.status(404).json({ error: 'User not found' });
       }
       
+      // Insert audit log within the same transaction
+      await client.query(
+        'INSERT INTO audit_logs (admin_id, admin_name, action_type, target_user, amount, details, ip_address) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+        [
+          req.adminId,
+          req.adminName,
+          'wallet_adjusted',
+          String(telegramId),
+          String(Math.abs(numAmount)),
+          `${numAmount > 0 ? '+' : ''}${numAmount} — ${reason}`,
+          req.adminIp
+        ]
+      );
+      
       await client.query('COMMIT');
       
       const updated = result.rows[0];
-
-      await db.insert(auditLogs).values({
-        adminId: req.adminId,
-        adminName: req.adminName,
-        actionType: 'wallet_adjusted',
-        targetUser: String(telegramId),
-        amount: String(Math.abs(numAmount)),
-        details: `${numAmount > 0 ? '+' : ''}${numAmount} — ${reason}`,
-        ipAddress: req.adminIp,
-      });
 
       res.json({ 
         success: true, 

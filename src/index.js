@@ -21,6 +21,10 @@ const main = async () => {
 
     // Create Express app and HTTP server
     const apiApp = createApiServer();
+    
+    // Attach bot instance to Express app for use in routes
+    apiApp.set('bot', bot);
+    
     const port = API_PORT || 3001;
     const httpServer = http.createServer(apiApp);
 

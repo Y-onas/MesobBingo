@@ -8,7 +8,7 @@ const { EMOJI } = require('./constants');
  * @returns {object|undefined} Telegraf keyboard markup or undefined if no button
  */
 const buildBroadcastKeyboard = (buttonType, botUsername) => {
-  if (!buttonType || buttonType === 'none') {
+  if (!buttonType || buttonType === 'none' || !botUsername) {
     return undefined;
   }
 

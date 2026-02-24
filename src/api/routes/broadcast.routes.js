@@ -30,9 +30,15 @@ router.post('/', jwtAuthMiddleware, async (req, res) => {
       return res.status(400).json({ error: 'Invalid audience type' });
     }
 
-    // Get bot username from config
-    const botUsername = await configService.get('bot_username');
-    if (!botUsername && buttonType) {
+    // Get bot username from config and normalize it
+    let botUsername = await configService.get('bot_username');
+    
+    // Normalize: trim whitespace and remove leading '@' if present
+    if (botUsername) {
+      botUsername = botUsername.trim().replace(/^@/, '');
+    }
+    
+    if (!botUsername && buttonType && buttonType !== 'none') {
       return res.status(400).json({ error: 'Bot username not configured. Please set bot_username in system config.' });
     }
 

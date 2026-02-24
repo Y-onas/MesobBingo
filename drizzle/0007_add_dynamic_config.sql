@@ -105,12 +105,22 @@ ON CONFLICT (config_key) DO NOTHING;
 ALTER TABLE referral_tiers ADD CONSTRAINT uq_referral_tiers_range 
   UNIQUE (min_deposit, max_deposit);
 
+-- Ensure open-ended tier (NULL max_deposit) is unique
+CREATE UNIQUE INDEX IF NOT EXISTS uq_referral_tiers_open_ended
+  ON referral_tiers (min_deposit)
+  WHERE max_deposit IS NULL;
+
+-- Insert fixed-range tiers
 INSERT INTO referral_tiers (min_deposit, max_deposit, bonus_amount) VALUES
-  (50, 99.99, 5),
-  (100, 199.99, 10),
-  (200, 499.99, 20),
-  (500, NULL, 30)
+  (50, 99.99, 10),
+  (100, 199.99, 15),
+  (200, 499.99, 20)
 ON CONFLICT (min_deposit, max_deposit) DO NOTHING;
+
+-- Insert open-ended tier separately
+INSERT INTO referral_tiers (min_deposit, max_deposit, bonus_amount) VALUES
+  (500, NULL, 30)
+ON CONFLICT (min_deposit) WHERE max_deposit IS NULL DO NOTHING;
 
 -- ─── Seed Payment Accounts ───────────────────────────────────────────
 -- Add unique constraint for idempotent payment account seeding

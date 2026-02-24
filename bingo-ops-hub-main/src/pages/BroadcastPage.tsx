@@ -12,6 +12,11 @@ export default function BroadcastPage() {
   const [result, setResult] = useState<{ success: number; failed: number } | null>(null);
 
   const handleSend = async () => {
+    if (imageError) {
+      alert('Please fix the image URL before sending');
+      return;
+    }
+
     if (!message.trim()) {
       alert('Please enter a message');
       return;
@@ -215,7 +220,7 @@ export default function BroadcastPage() {
           </div>
           <button
             onClick={handleSend}
-            disabled={loading || !message.trim()}
+            disabled={loading || !message.trim() || imageError}
             className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center gap-2 font-medium transition"
           >
             {loading ? (

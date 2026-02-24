@@ -111,6 +111,9 @@ const hasPermission = async (userId, requiredRole) => {
   // Super admins can do anything
   if (userRole === ROLES.SUPER_ADMIN) return true;
 
+  // Fail closed: deny access if requiredRole is invalid/unknown
+  if (!ROLE_HIERARCHY[requiredRole]) return false;
+
   return (ROLE_HIERARCHY[userRole] || 0) >= (ROLE_HIERARCHY[requiredRole] || 0);
 };
 

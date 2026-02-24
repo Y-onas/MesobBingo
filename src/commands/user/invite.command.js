@@ -14,8 +14,14 @@ const inviteCommand = async (ctx) => {
       return ctx.reply('Please use /start first.');
     }
     
-    // Get bot username from dynamic config
-    const botUsername = await configService.get('bot_username', 'your_bot_username');
+    // Get bot username from dynamic config and normalize it
+    let botUsername = await configService.get('bot_username', 'your_bot_username');
+    
+    // Normalize: trim whitespace and remove leading '@' if present
+    if (botUsername) {
+      botUsername = botUsername.trim().replace(/^@/, '');
+    }
+    
     const referralLink = `https://t.me/${botUsername}?start=ref_${ctx.from.id}`;
     
     // Get dynamic referral tiers from DB
@@ -31,8 +37,8 @@ const inviteCommand = async (ctx) => {
         return `   💎 ${min}-${max} ${CURRENCY} → *${bonus} ${CURRENCY}* ቦነስ`;
       }).join('\n');
     } else {
-      tierText = `   💎 50-99 ${CURRENCY} → *5 ${CURRENCY}* ቦነስ
-   💎 100-199 ${CURRENCY} → *10 ${CURRENCY}* ቦነስ
+      tierText = `   💎 50-99 ${CURRENCY} → *10 ${CURRENCY}* ቦነስ
+   💎 100-199 ${CURRENCY} → *15 ${CURRENCY}* ቦነስ
    💎 200-499 ${CURRENCY} → *20 ${CURRENCY}* ቦነስ
    💎 500+ ${CURRENCY} → *30 ${CURRENCY}* ቦነስ`;
     }

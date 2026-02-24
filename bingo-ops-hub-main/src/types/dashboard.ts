@@ -101,5 +101,4 @@ export interface Admin {
   role: AdminRole;
   isActive: boolean;
   createdAt: string;
-  updatedAt: string;
 }

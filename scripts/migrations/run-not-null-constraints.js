@@ -13,10 +13,11 @@ const path = require('path');
 async function runMigration() {
   console.log('🔧 Adding NOT NULL constraints to columns with defaults...\n');
 
-  const client = await pool.connect();
+  let client;
   let exitCode = 0;
 
   try {
+    client = await pool.connect();
     await client.query('BEGIN');
 
     // Read and execute the migration SQL
@@ -35,11 +36,11 @@ async function runMigration() {
     console.log('   - payment_accounts (is_active, priority, current_daily_total, last_reset_date, created_at, updated_at)');
 
   } catch (error) {
-    await client.query('ROLLBACK');
+    if (client) await client.query('ROLLBACK');
     console.error('❌ Error adding NOT NULL constraints:', error);
     exitCode = 1;
   } finally {
-    client.release();
+    if (client) client.release();
     await pool.end();
     process.exitCode = exitCode;
   }

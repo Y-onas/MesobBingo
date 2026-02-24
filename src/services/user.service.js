@@ -179,7 +179,7 @@ Your referral just made their first deposit!
 💰 You earned: *${bonusAmount} ብር*
 📊 Deposit amount: ${depositAmount} ብር
 
-💳 New balance: ${Number(referrer.playingBalance).toFixed(2)} ብր (Playing Balance)
+💳 New balance: ${Number(referrer.playingBalance).toFixed(2)} ብር (Playing Balance)
 
 Keep inviting friends with /invite to earn more! 🚀`;
 

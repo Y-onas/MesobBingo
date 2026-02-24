@@ -10,6 +10,7 @@ const userService = require('../services/user.service');
 const { isAdmin } = require('../config/admin');
 const { depositConfirmKeyboard } = require('../keyboards/deposit.keyboard');
 const { adminPanelKeyboard } = require('../keyboards/admin.keyboard');
+const logger = require('../utils/logger');
 const { depositCommand } = require('../commands/user/deposit.command');
 const { withdrawCommand } = require('../commands/user/withdraw.command');
 const { balanceCommand } = require('../commands/user/balance.command');
