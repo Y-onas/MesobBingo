@@ -75,8 +75,7 @@ Your deposit will be reviewed shortly.`, {
     });
     
     // Forward to admins (from DB)
-    const allAdmins = await getAllAdmins();
-    const activeAdmins = allAdmins.filter(a => a.isActive);
+    const activeAdmins = await getAllAdmins();
     for (const admin of activeAdmins) {
       try {
         await ctx.telegram.sendPhoto(admin.telegramId, fileId, {

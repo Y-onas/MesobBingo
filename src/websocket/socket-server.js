@@ -7,6 +7,7 @@ const { BingoEngine } = require('../services/bingo-engine');
 const { CONNECTION_LIMITS } = require('../utils/constants');
 const { MAX_CONNECTIONS_PER_USER, MAX_CONNECTIONS_PER_IP, MAX_TOTAL_CONNECTIONS } = require('../config/env');
 const logger = require('../utils/logger');
+const userService = require('../services/user.service');
 
 let io = null;
 let connectionManager = null;
@@ -76,7 +77,6 @@ function initSocketServer(httpServer) {
 
       // Check if user exists and has verified phone
       try {
-        const userService = require('../services/user.service');
         const user = await userService.getUser(telegramId);
         
         if (!user) {
@@ -84,14 +84,14 @@ function initSocketServer(httpServer) {
           return next(new Error('User not found. Please use /start in the bot first.'));
         }
         
-        if (!user.phoneVerified) {
-          logger.warn(`Phone not verified: ${telegramId}`);
-          return next(new Error('Phone verification required. Please share your contact in the bot.'));
-        }
-        
         if (user.isBanned) {
           logger.warn(`Banned user attempted connection: ${telegramId}`);
           return next(new Error('Account suspended'));
+        }
+        
+        if (!user.phoneVerified) {
+          logger.warn(`Phone not verified: ${telegramId}`);
+          return next(new Error('Phone verification required. Please share your contact in the bot.'));
         }
       } catch (error) {
         logger.error('User verification error:', error);

@@ -36,7 +36,7 @@ function markDbUnhealthy() {
       logger.warn('Database still unhealthy, will retry...');
       markDbUnhealthy(); // Retry
     }
-  }, 10000); // Retry after 10s
+  }, 10000).unref(); // Don't block process exit
 }
 
 /**

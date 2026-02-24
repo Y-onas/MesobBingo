@@ -6,7 +6,7 @@ const logger = require('../../utils/logger');
  * JWT-based authentication middleware (preferred)
  * Verifies JWT token from Authorization header
  */
-const jwtAuthMiddleware = (req, res, next) => {
+const jwtAuthMiddleware = async (req, res, next) => {
   const authHeader = req.headers.authorization;
   
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -17,6 +17,13 @@ const jwtAuthMiddleware = (req, res, next) => {
 
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
+    
+    // Revalidate admin status from database (ensures revocation takes immediate effect)
+    const { isAdmin } = require('../../config/admin');
+    const adminActive = await isAdmin(decoded.telegramId);
+    if (!adminActive) {
+      return res.status(401).json({ error: 'Unauthorized — admin access revoked', revoked: true });
+    }
     
     // Attach admin info from token
     req.adminId = decoded.telegramId;

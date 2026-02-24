@@ -1,4 +1,4 @@
-﻿const { eq, sql } = require('drizzle-orm');
+const { eq, sql } = require('drizzle-orm');
 const { db } = require('../database');
 const { users } = require('../database/schema');
 const configService = require('./config.service');
@@ -161,7 +161,7 @@ const processReferralBonus = async (depositorId, depositAmount, bot = null) => {
     await db.update(users)
       .set({
         playingBalance: sql`${users.playingBalance} + ${bonusAmount}`,
-        mainWallet: sql`${users.mainWallet} + ${bonusAmount}`,
+        playWallet: sql`${users.playWallet} + ${bonusAmount}`,
         referralEarnings: sql`${users.referralEarnings} + ${bonusAmount}`,
       })
       .where(eq(users.telegramId, depositor.referredBy));

@@ -11,24 +11,25 @@ const configService = require('./config.service');
  * NEW: Only allows withdrawals from withdrawable_balance (winnings only)
  */
 const createWithdrawal = async (telegramId, amount, method, accountNumber, accountHolderName) => {
+  // Pre-flight validation — no DB mutation, no transaction needed
+  if (!accountHolderName || accountHolderName.trim().length < 3) {
+    throw new Error('Account holder name is required (minimum 3 characters)');
+  }
+
+  // Kill switch check
+  const withdrawalsEnabled = await configService.get('withdrawals_enabled', true);
+  if (!withdrawalsEnabled) {
+    throw new Error('Withdrawals are temporarily disabled');
+  }
+
+  const MIN_WITHDRAW = Number(await configService.get('min_withdraw', 150));
+  if (amount < MIN_WITHDRAW) {
+    throw new Error(`Minimum withdrawal is ${MIN_WITHDRAW} ብር`);
+  }
+
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-
-    // Validation
-    if (!accountHolderName || accountHolderName.trim().length < 3) {
-      await client.query('ROLLBACK');
-      throw new Error('Account holder name is required (minimum 3 characters)');
-    }
-
-    // Kill switch check
-    const withdrawalsEnabled = await configService.get('withdrawals_enabled', true);
-    if (!withdrawalsEnabled) {
-      await client.query('ROLLBACK');
-      throw new Error('Withdrawals are temporarily disabled');
-    }
-
-    const MIN_WITHDRAW = Number(await configService.get('min_withdraw', 150));
 
     // Lock user row for update
     const { rows: [user] } = await client.query(
@@ -39,11 +40,6 @@ const createWithdrawal = async (telegramId, amount, method, accountNumber, accou
     if (!user) {
       await client.query('ROLLBACK');
       throw new Error('User not found');
-    }
-
-    if (amount < MIN_WITHDRAW) {
-      await client.query('ROLLBACK');
-      throw new Error(`Minimum withdrawal is ${MIN_WITHDRAW} ብር`);
     }
 
     // NEW: Check withdrawable balance (winnings only)
@@ -69,7 +65,7 @@ const createWithdrawal = async (telegramId, amount, method, accountNumber, accou
       `INSERT INTO withdrawals (telegram_id, amount, method, account_number, account_holder_name, status) 
        VALUES ($1, $2, $3, $4, $5, $6) 
        RETURNING *`,
-      [telegramId, String(amount), method, accountNumber, accountHolderName, 'pending']
+      [telegramId, amount, method, accountNumber, accountHolderName, 'pending']
     );
 
     await client.query('COMMIT');

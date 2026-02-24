@@ -121,8 +121,8 @@ const handleWithdrawAmount = async (ctx, text) => {
   }
   
   const user = await userService.getUser(ctx.from.id);
-  if (!user || Number(user.mainWallet) < amount) {
-    return ctx.reply(`❌ Insufficient balance. Your main wallet: ${Number(user?.mainWallet || 0).toFixed(2)} ${CURRENCY}`);
+  if (!user || Number(user.withdrawableBalance) < amount) {
+    return ctx.reply(`❌ Insufficient withdrawable balance. Your withdrawable balance: ${Number(user?.withdrawableBalance || 0).toFixed(2)} ${CURRENCY}`);
   }
   
   ctx.session.withdrawAmount = amount;
@@ -252,9 +252,8 @@ Your deposit will be reviewed shortly.`, {
   });
   
   // Notify admins with SMS text
-  const { getAllAdmins } = require('../config/admin');
-  const allAdmins = await getAllAdmins();
-  const activeAdmins = allAdmins.filter(a => a.isActive);
+  const { getActiveAdmins } = require('../config/admin');
+  const activeAdmins = await getActiveAdmins();
   for (const admin of activeAdmins) {
     try {
       await ctx.telegram.sendMessage(admin.telegramId, `💳 *New ${method.toUpperCase()} Deposit*
@@ -270,7 +269,7 @@ ${smsText.substring(0, 400)}`, {
       });
     } catch (err) {
       // Admin may have blocked the bot
-      console.error(`Failed to notify admin ${admin.telegramId}:`, err.message);
+      logger.error(`Failed to notify admin ${admin.telegramId}:`, err.message);
     }
   }
 };

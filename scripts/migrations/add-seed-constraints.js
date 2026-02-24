@@ -21,7 +21,8 @@ async function addSeedConstraints() {
     const { rows: tierConstraint } = await client.query(`
       SELECT constraint_name 
       FROM information_schema.table_constraints 
-      WHERE table_name = 'referral_tiers' 
+      WHERE table_schema = 'public'
+      AND table_name = 'referral_tiers' 
       AND constraint_name = 'uq_referral_tier_range'
     `);
 
@@ -41,7 +42,8 @@ async function addSeedConstraints() {
     const { rows: accountConstraint } = await client.query(`
       SELECT constraint_name 
       FROM information_schema.table_constraints 
-      WHERE table_name = 'payment_accounts' 
+      WHERE table_schema = 'public'
+      AND table_name = 'payment_accounts' 
       AND constraint_name = 'uq_payment_account'
     `);
 
@@ -66,9 +68,9 @@ async function addSeedConstraints() {
     console.log('   - Makes seed operations idempotent');
 
   } catch (error) {
+    exitCode = 1;
     await client.query('ROLLBACK');
     console.error('❌ Error adding constraints:', error);
-    exitCode = 1;
   } finally {
     client.release();
     process.exit(exitCode);

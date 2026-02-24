@@ -191,53 +191,31 @@ const handleBroadcastAddButton = (buttonType) => async (ctx) => {
     }
     
     ctx.session = ctx.session || {};
+    
+    if (!ctx.session.broadcastMessage) {
+      await ctx.answerCbQuery();
+      return ctx.reply('❌ Broadcast message not found. Please start the broadcast flow again.');
+    }
+    
     ctx.session.broadcastButton = buttonType;
     
     await ctx.answerCbQuery();
     await ctx.reply('📢 Broadcasting message with button...');
     
-    const { Markup } = require('telegraf');
-    const { EMOJI } = require('../utils/constants');
     const configService = require('../services/config.service');
+    const { buildBroadcastKeyboard } = require('../utils/broadcast-helper');
     
     // Get bot username from dynamic config
     const botUsername = await configService.get('bot_username', 'your_bot_username');
     
-    // Create button based on type
-    let buttonText, buttonUrl;
-    
-    switch (buttonType) {
-      case 'play':
-        buttonText = `${EMOJI.PLAY} Play`;
-        buttonUrl = `https://t.me/${botUsername}?start=play`;
-        break;
-      case 'deposit':
-        buttonText = `${EMOJI.DEPOSIT} Deposit`;
-        buttonUrl = `https://t.me/${botUsername}?start=deposit`;
-        break;
-      case 'balance':
-        buttonText = `${EMOJI.BALANCE} Check Balance`;
-        buttonUrl = `https://t.me/${botUsername}?start=balance`;
-        break;
-      case 'invite':
-        buttonText = `${EMOJI.INVITE} Invite Friends`;
-        buttonUrl = `https://t.me/${botUsername}?start=invite`;
-        break;
-      default:
-        buttonText = 'Open Bot';
-        buttonUrl = `https://t.me/${botUsername}`;
+    if (!botUsername || botUsername === 'your_bot_username') {
+      return ctx.reply('❌ Bot username not configured. Please ask an admin to set bot_username in system config.');
     }
     
-    const keyboard = Markup.inlineKeyboard([
-      [Markup.button.url(buttonText, buttonUrl)]
-    ]);
-    
-    if (!ctx.session?.broadcastMessage) {
-      return ctx.reply('❌ Broadcast message not found. Please start the broadcast flow again.');
-    }
+    const keyboard = buildBroadcastKeyboard(buttonType, botUsername);
     
     const result = await adminService.broadcastMessage(
-      ctx,
+      ctx.telegram,
       ctx.session.broadcastMessage,
       ctx.session.broadcastType === 'depositors',
       keyboard
@@ -273,7 +251,7 @@ const handleBroadcastSendPlain = async (ctx) => {
     await ctx.reply('📢 Broadcasting message...');
     
     const result = await adminService.broadcastMessage(
-      ctx,
+      ctx.telegram,
       ctx.session.broadcastMessage,
       ctx.session.broadcastType === 'depositors'
     );

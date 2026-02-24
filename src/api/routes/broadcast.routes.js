@@ -1,10 +1,9 @@
 const express = require('express');
-const { Markup } = require('telegraf');
 const { jwtAuthMiddleware } = require('../middleware/auth');
 const adminService = require('../../services/admin.service');
 const configService = require('../../services/config.service');
-const { getAdminRole } = require('../../config/admin');
-const { EMOJI } = require('../../utils/constants');
+const { hasPermission } = require('../../config/admin');
+const { buildBroadcastKeyboard } = require('../../utils/broadcast-helper');
 const logger = require('../../utils/logger');
 
 const router = express.Router();
@@ -15,10 +14,10 @@ const router = express.Router();
  */
 router.post('/', jwtAuthMiddleware, async (req, res) => {
   try {
-    // Check admin role - super_admin, admin, and support_admin can broadcast
-    const adminRole = req.adminRole || await getAdminRole(req.adminId);
-    if (!['super_admin', 'admin', 'support_admin'].includes(adminRole)) {
-      return res.status(403).json({ error: 'Insufficient permissions. Only super_admin, admin, and support_admin can broadcast.' });
+    // Check admin permission - support_admin level or above can broadcast
+    const canBroadcast = await hasPermission(req.adminId, 'support_admin');
+    if (!canBroadcast) {
+      return res.status(403).json({ error: 'Insufficient permissions to broadcast.' });
     }
 
     const { message, audience, buttonType, imageUrl } = req.body;
@@ -38,36 +37,7 @@ router.post('/', jwtAuthMiddleware, async (req, res) => {
     }
 
     // Create keyboard if button type is specified
-    let keyboard = undefined;
-    if (buttonType && buttonType !== 'none') {
-      let buttonText, buttonUrl;
-
-      switch (buttonType) {
-        case 'play':
-          buttonText = `${EMOJI.PLAY} Play`;
-          buttonUrl = `https://t.me/${botUsername}?start=play`;
-          break;
-        case 'deposit':
-          buttonText = `${EMOJI.DEPOSIT} Deposit`;
-          buttonUrl = `https://t.me/${botUsername}?start=deposit`;
-          break;
-        case 'balance':
-          buttonText = `${EMOJI.BALANCE} Check Balance`;
-          buttonUrl = `https://t.me/${botUsername}?start=balance`;
-          break;
-        case 'invite':
-          buttonText = `${EMOJI.INVITE} Invite Friends`;
-          buttonUrl = `https://t.me/${botUsername}?start=invite`;
-          break;
-        default:
-          buttonText = 'Open Bot';
-          buttonUrl = `https://t.me/${botUsername}`;
-      }
-
-      keyboard = Markup.inlineKeyboard([
-        [Markup.button.url(buttonText, buttonUrl)]
-      ]);
-    }
+    const keyboard = buildBroadcastKeyboard(buttonType, botUsername);
 
     // Get bot instance from app
     const bot = req.app.get('bot');
@@ -90,7 +60,7 @@ router.post('/', jwtAuthMiddleware, async (req, res) => {
     res.json(result);
   } catch (error) {
     logger.error('Error sending broadcast:', error);
-    res.status(500).json({ error: error.message || 'Failed to send broadcast' });
+    res.status(500).json({ error: 'Failed to send broadcast' });
   }
 });
 

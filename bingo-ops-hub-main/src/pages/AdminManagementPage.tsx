@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { fetchAdmins, addAdmin, deactivateAdmin, activateAdmin, updateAdminRole } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { Shield, UserPlus, Users, CheckCircle2, XCircle, Crown, Wallet, Headphones, UserCog } from "lucide-react";
+import type { Admin, AdminRole } from "@/types/dashboard";
 
 const ROLES = [
   { value: "super_admin", label: "Super Admin", icon: Crown, color: "text-yellow-500 bg-yellow-500/10" },
@@ -40,26 +41,30 @@ export default function AdminManagementPage() {
       toast({ title: "Error", description: "Telegram ID and Name are required", variant: "destructive" });
       return;
     }
+    if (!/^\d+$/.test(form.telegramId)) {
+      toast({ title: "Error", description: "Telegram ID must be numeric", variant: "destructive" });
+      return;
+    }
     try {
       await addAdmin(form);
       queryClient.invalidateQueries({ queryKey: ["admins"] });
       setForm({ telegramId: "", name: "", email: "", role: "support_admin" });
       setShowForm(false);
       toast({ title: "Admin added successfully" });
-    } catch (err: any) {
-      toast({ title: "Error", description: err.message, variant: "destructive" });
+    } catch (err) {
+      toast({ title: "Error", description: err instanceof Error ? err.message : "Failed to add admin", variant: "destructive" });
     }
   };
 
-  const handleToggleStatus = async (admin: any) => {
+  const handleToggleStatus = async (admin: Admin) => {
     const action = admin.isActive ? deactivateAdmin : activateAdmin;
     const label = admin.isActive ? "deactivated" : "activated";
     try {
       await action(admin.id);
       queryClient.invalidateQueries({ queryKey: ["admins"] });
       toast({ title: `Admin ${label}` });
-    } catch (err: any) {
-      toast({ title: "Error", description: err.message, variant: "destructive" });
+    } catch (err) {
+      toast({ title: "Error", description: err instanceof Error ? err.message : "Failed to update admin status", variant: "destructive" });
     }
   };
 
@@ -69,8 +74,8 @@ export default function AdminManagementPage() {
       queryClient.invalidateQueries({ queryKey: ["admins"] });
       setEditingRole(null);
       toast({ title: "Role updated" });
-    } catch (err: any) {
-      toast({ title: "Error", description: err.message, variant: "destructive" });
+    } catch (err) {
+      toast({ title: "Error", description: err instanceof Error ? err.message : "Failed to update role", variant: "destructive" });
     }
   };
 
@@ -182,7 +187,7 @@ export default function AdminManagementPage() {
               </tr>
             </thead>
             <tbody>
-              {admins.map((admin: any) => (
+              {admins.map((admin: Admin) => (
                 <tr key={admin.id} className="border-b border-border hover:bg-muted/10">
                   <td className="px-4 py-3 font-medium">{admin.name}</td>
                   <td className="px-4 py-3 font-mono text-muted-foreground">{admin.telegramId}</td>

@@ -34,19 +34,16 @@ router.post('/login', loginLimiter, async (req, res) => {
       return res.status(400).json({ error: 'Telegram ID must be a valid positive number' });
     }
 
-    // Check admin status from database
-    const adminIsValid = await isAdmin(telegramIdNum);
+    // Get role from database (implicitly verifies admin status)
+    const role = await getAdminRole(telegramIdNum);
 
-    if (!adminIsValid) {
+    if (!role) {
       logger.warn(`Failed admin login attempt: ${telegramId}`);
       return res.status(403).json({
         isAdmin: false,
         error: 'Not authorized',
       });
     }
-
-    // Get role from database
-    const role = await getAdminRole(telegramIdNum) || 'support_admin';
 
     // Generate JWT token
     const token = jwt.sign(
@@ -88,6 +85,12 @@ router.post('/verify', async (req, res) => {
 
     try {
       const decoded = jwt.verify(token, JWT_SECRET);
+      
+      // Revalidate admin status from database (ensures revocation takes immediate effect)
+      const adminActive = await isAdmin(decoded.telegramId);
+      if (!adminActive) {
+        return res.status(401).json({ error: 'Admin access revoked', revoked: true });
+      }
       
       res.json({
         valid: true,

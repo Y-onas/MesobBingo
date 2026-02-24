@@ -11,10 +11,11 @@ const { pool } = require('../../src/database');
 async function backfillTotalWinnings() {
   console.log('🔧 Backfilling total_winnings for existing users...\n');
 
-  const client = await pool.connect();
+  let client;
   let exitCode = 0;
 
   try {
+    client = await pool.connect();
     await client.query('BEGIN');
 
     // Check how many users need backfilling
@@ -44,12 +45,13 @@ async function backfillTotalWinnings() {
     console.log('   Future winnings will be tracked accurately via bingo-engine.js');
 
   } catch (error) {
-    await client.query('ROLLBACK');
+    if (client) await client.query('ROLLBACK');
     console.error('❌ Error backfilling total_winnings:', error);
     exitCode = 1;
   } finally {
-    client.release();
-    process.exit(exitCode);
+    if (client) client.release();
+    await pool.end();
+    process.exitCode = exitCode;
   }
 }
 

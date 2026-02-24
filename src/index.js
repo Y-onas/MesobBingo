@@ -79,9 +79,9 @@ const main = async () => {
       
       try {
         // Alert admin via bot (from DB)
-        const { getAllAdmins } = require('./config/admin');
-        const allAdmins = await getAllAdmins();
-        for (const admin of allAdmins.filter(a => a.isActive)) {
+        const { getActiveAdmins } = require('./config/admin');
+        const activeAdmins = await getActiveAdmins();
+        for (const admin of activeAdmins) {
           try {
             await bot.telegram.sendMessage(admin.telegramId, `🚨 CRASH: ${err.message}`);
           } catch (e) { /* ignore send error */ }

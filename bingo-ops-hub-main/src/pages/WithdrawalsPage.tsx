@@ -10,7 +10,12 @@ import { cn } from "@/lib/utils";
 import { Eye, Lock, CheckCircle2, XCircle, AlertTriangle, Wallet, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
-const ADMIN_ID = () => localStorage.getItem("mesob_admin_id") || "admin-001";
+// Helper function to calculate total balance
+const getTotalBalance = (user: { user_withdrawable_balance?: number | null; user_playing_balance?: number | null }) => {
+  return Number(user.user_withdrawable_balance || 0) + Number(user.user_playing_balance || 0);
+};
+
+const ADMIN_ID = () => localStorage.getItem("mesob_admin_id") ?? "";
 
 export default function WithdrawalsPage() {
   const queryClient = useQueryClient();
@@ -215,7 +220,7 @@ export default function WithdrawalsPage() {
                 <div><span className="text-muted-foreground">Withdrawable Balance:</span> <span className="font-mono font-semibold text-success">{Number(selected.user_withdrawable_balance || 0).toLocaleString()} ብር</span></div>
                 <div><span className="text-muted-foreground">Withdraw Amount:</span> <span className="font-mono font-semibold text-status-rejected">{Number(selected.amount).toLocaleString()} ብር</span></div>
                 <div><span className="text-muted-foreground">Playing Balance:</span> <span className="font-mono text-primary">{Number(selected.user_playing_balance || 0).toLocaleString()} ብር</span></div>
-                <div><span className="text-muted-foreground">Total Balance:</span> <span className="font-mono font-semibold">{(Number(selected.user_withdrawable_balance || 0) + Number(selected.user_playing_balance || 0)).toLocaleString()} ብር</span></div>
+                <div><span className="text-muted-foreground">Total Balance:</span> <span className="font-mono font-semibold">{getTotalBalance(selected).toLocaleString()} ብር</span></div>
                 <div><span className="text-muted-foreground">Total Deposited:</span> <span className="font-mono">{Number(selected.user_total_deposited).toLocaleString()} ብር</span></div>
                 <div><span className="text-muted-foreground">Total Withdrawn:</span> <span className="font-mono">{Number(selected.user_total_withdrawn).toLocaleString()} ብር</span></div>
                 <div><span className="text-muted-foreground">Games Played:</span> <span className="font-mono">{selected.user_games_played}</span></div>

@@ -86,14 +86,14 @@ const playGame = async (telegramId) => {
     throw new Error('Please select exactly 5 numbers');
   }
 
+  // Kill switch check — before acquiring a pool connection
+  const gamesEnabled = await configService.get('games_enabled', true);
+  if (!gamesEnabled) {
+    throw new Error('Games are temporarily disabled');
+  }
+
   const client = await pool.connect();
   try {
-    // Kill switch check
-    const gamesEnabled = await configService.get('games_enabled', true);
-    if (!gamesEnabled) {
-      throw new Error('Games are temporarily disabled');
-    }
-
     await client.query('BEGIN');
 
     // Lock user row for update

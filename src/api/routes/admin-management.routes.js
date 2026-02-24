@@ -21,7 +21,7 @@ router.get('/', async (req, res) => {
       return res.status(403).json({ error: 'Insufficient permissions' });
     }
 
-    const allAdmins = await getAllAdmins();
+    const allAdmins = await getAllAdmins(true); // Include inactive for admin management UI
     res.json(allAdmins);
   } catch (error) {
     logger.error('Error fetching admins:', error);
@@ -45,13 +45,18 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ error: 'telegramId and name are required' });
     }
 
+    const parsedTelegramId = parseInt(telegramId);
+    if (isNaN(parsedTelegramId)) {
+      return res.status(400).json({ error: 'telegramId must be a valid number' });
+    }
+
     // Validate role
     if (role && !Object.values(ROLES).includes(role)) {
       return res.status(400).json({ error: 'Invalid role' });
     }
 
     const [newAdmin] = await db.insert(admins).values({
-      telegramId: parseInt(telegramId),
+      telegramId: parsedTelegramId,
       name,
       email: email || null,
       role: role || ROLES.SUPPORT_ADMIN,
@@ -148,6 +153,14 @@ router.patch('/:id/activate', async (req, res) => {
     }
 
     clearAdminCache();
+
+    await db.insert(auditLogs).values({
+      adminId: String(requesterId),
+      adminName: req.adminName || `Admin ${requesterId}`,
+      actionType: 'admin_reactivated',
+      details: `Reactivated admin: ${updated.name} (${updated.telegramId})`,
+      ipAddress: req.adminIp || req.ip,
+    });
 
     logger.info(`Admin reactivated: ${updated.name} (${updated.telegramId}) by ${requesterId}`);
     res.json(updated);

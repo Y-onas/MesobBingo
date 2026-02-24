@@ -4,6 +4,7 @@ const { db } = require('../../database');
 const { withdrawals, users, auditLogs } = require('../../database/schema');
 const withdrawService = require('../../services/withdraw.service');
 const { notifyUser } = require('../telegram');
+const logger = require('../../utils/logger');
 
 const router = Router();
 
@@ -70,7 +71,7 @@ router.get('/', async (req, res) => {
 
     res.json(result);
   } catch (error) {
-    console.error('Withdrawals list error:', error);
+    logger.error('Withdrawals list error:', error);
     res.status(500).json({ error: 'Failed to fetch withdrawals' });
   }
 });
@@ -96,7 +97,7 @@ router.post('/:id/review', async (req, res) => {
 
     res.json(updated);
   } catch (error) {
-    console.error('Withdrawal review error:', error);
+    logger.error('Withdrawal review error:', error);
     res.status(500).json({ error: 'Failed to lock withdrawal' });
   }
 });
@@ -140,7 +141,7 @@ router.post('/:id/approve', async (req, res) => {
     // Notify user via Telegram
     notifyUser(result.telegramId, `✅ *Withdrawal Approved!*\n\nYour withdrawal of *${Number(result.amount).toFixed(2)} ብር* has been processed!\n\nThe funds will be sent to your account shortly.`);
   } catch (error) {
-    console.error('Withdrawal approve error:', error);
+    logger.error('Withdrawal approve error:', error);
     res.status(400).json({ error: error.message });
   }
 });
@@ -181,7 +182,7 @@ router.post('/:id/reject', async (req, res) => {
     // Notify user via Telegram
     notifyUser(result.telegramId, `❌ *Withdrawal Rejected*\n\nYour withdrawal of *${Number(result.amount).toFixed(2)} ብር* was rejected.\n\nReason: ${rejectionReason}\n\nThe amount has been refunded to your wallet.`);
   } catch (error) {
-    console.error('Withdrawal reject error:', error);
+    logger.error('Withdrawal reject error:', error);
     res.status(400).json({ error: error.message });
   }
 });

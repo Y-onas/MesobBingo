@@ -7,6 +7,7 @@ export default function BroadcastPage() {
   const [audience, setAudience] = useState<'all' | 'depositors'>('all');
   const [buttonType, setButtonType] = useState<'none' | 'play' | 'deposit' | 'balance' | 'invite'>('none');
   const [imageUrl, setImageUrl] = useState('');
+  const [imageError, setImageError] = useState(false);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<{ success: number; failed: number } | null>(null);
 
@@ -89,13 +90,19 @@ export default function BroadcastPage() {
               <input
                 type="url"
                 value={imageUrl}
-                onChange={(e) => setImageUrl(e.target.value)}
+                onChange={(e) => {
+                  setImageUrl(e.target.value);
+                  setImageError(false); // Reset error when URL changes
+                }}
                 placeholder="https://example.com/image.jpg"
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
               {imageUrl && (
                 <button
-                  onClick={() => setImageUrl('')}
+                  onClick={() => {
+                    setImageUrl('');
+                    setImageError(false);
+                  }}
                   className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
                 >
                   <X className="w-4 h-4" />
@@ -105,16 +112,16 @@ export default function BroadcastPage() {
           </div>
           {imageUrl && (
             <div className="mt-2 p-2 border border-gray-200 rounded-lg">
-              <img 
-                src={imageUrl} 
-                alt="Preview" 
-                className="max-h-40 rounded"
-                onError={(e) => {
-                  e.currentTarget.src = '';
-                  e.currentTarget.alt = 'Invalid image URL';
-                  e.currentTarget.className = 'text-red-500 text-sm';
-                }}
-              />
+              {imageError ? (
+                <p className="text-red-500 text-sm">Invalid image URL</p>
+              ) : (
+                <img 
+                  src={imageUrl} 
+                  alt="Preview" 
+                  className="max-h-40 rounded"
+                  onError={() => setImageError(true)}
+                />
+              )}
             </div>
           )}
           <p className="text-sm text-gray-500 mt-1">
@@ -146,7 +153,7 @@ export default function BroadcastPage() {
           <label className="block text-sm font-medium text-gray-700 mb-2">
             Add Interactive Button (Optional)
           </label>
-          <div className="grid grid-cols-5 gap-2">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2">
             <button
               onClick={() => setButtonType('none')}
               className={`p-3 border-2 rounded-lg text-sm font-medium transition ${

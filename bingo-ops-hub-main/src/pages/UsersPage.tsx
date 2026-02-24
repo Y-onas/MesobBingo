@@ -9,6 +9,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { Search, Ban, Wallet, ShieldCheck, Phone, Loader2, UserCheck, Gift, RotateCcw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
+// Helper function to calculate total balance
+const getTotalBalance = (user: { withdrawable_balance?: number | null; playing_balance?: number | null }) => {
+  return Number(user.withdrawable_balance || 0) + Number(user.playing_balance || 0);
+};
+
 export default function UsersPage() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -64,8 +69,14 @@ export default function UsersPage() {
   });
 
   const openProfile = async (user: any) => {
-    setSelectedUser(user);
+    setSelectedUser(user); // Show stale data immediately
     setShowProfile(true);
+    try {
+      const fresh = await fetchUser(user.telegram_id);
+      setSelectedUser(fresh); // Update with fresh data
+    } catch {
+      // Fall back to list data already shown
+    }
   };
 
   if (isLoading) {
@@ -126,9 +137,9 @@ export default function UsersPage() {
                     <span className="text-primary">{Number(u.playing_balance || 0).toLocaleString()} ብር</span>
                   </td>
                   <td className="px-3 md:px-4 py-3 font-mono text-xs md:text-sm whitespace-nowrap font-semibold">
-                    {(Number(u.withdrawable_balance || 0) + Number(u.playing_balance || 0)).toLocaleString()} ብር
+                    {getTotalBalance(u).toLocaleString()} ብር
                   </td>
-                  <td className="px-3 md:px-4 py-3 font-mono text-xs md:text-sm whitespace-nowrap">{Number(u.total_deposited).toLocaleString()} ብር</td>
+                  <td className="px-3 md:px-4 py-3 font-mono text-xs md:text-sm whitespace-nowrap">{Number(u.total_deposited || 0).toLocaleString()} ብር</td>
                   <td className="px-3 md:px-4 py-3 font-mono text-xs whitespace-nowrap">{u.games_played} / {u.games_won}W</td>
                   <td className="px-3 md:px-4 py-3">
                     <div className="flex items-center gap-2">
@@ -195,7 +206,7 @@ export default function UsersPage() {
                 </div>
                 <div className="rounded-lg bg-muted p-3">
                   <p className="text-xs text-muted-foreground">Total Balance</p>
-                  <p className="font-mono font-semibold">{(Number(selectedUser.withdrawable_balance || 0) + Number(selectedUser.playing_balance || 0)).toLocaleString()} ብር</p>
+                  <p className="font-mono font-semibold">{getTotalBalance(selectedUser).toLocaleString()} ብር</p>
                 </div>
                 <div className="rounded-lg bg-muted p-3">
                   <p className="text-xs text-muted-foreground">Total Winnings</p>
@@ -203,11 +214,11 @@ export default function UsersPage() {
                 </div>
                 <div className="rounded-lg bg-muted p-3">
                   <p className="text-xs text-muted-foreground">Total Deposited</p>
-                  <p className="font-mono">{Number(selectedUser.total_deposited).toLocaleString()} ብር</p>
+                  <p className="font-mono">{Number(selectedUser.total_deposited || 0).toLocaleString()} ብር</p>
                 </div>
                 <div className="rounded-lg bg-muted p-3">
                   <p className="text-xs text-muted-foreground">Total Withdrawn</p>
-                  <p className="font-mono">{Number(selectedUser.total_withdrawn).toLocaleString()} ብር</p>
+                  <p className="font-mono">{Number(selectedUser.total_withdrawn || 0).toLocaleString()} ብር</p>
                 </div>
                 <div className="rounded-lg bg-muted p-3">
                   <p className="text-xs text-muted-foreground">Games Played</p>
@@ -267,7 +278,17 @@ export default function UsersPage() {
         <DialogContent className="bg-card border-border">
           <DialogHeader><DialogTitle>Adjust Wallet — {selectedUser?.username}</DialogTitle></DialogHeader>
           <div className="space-y-3">
-            <p className="text-sm text-muted-foreground">Current balance: <span className="font-mono font-semibold">{(Number(selectedUser?.withdrawable_balance || 0) + Number(selectedUser?.playing_balance || 0)).toLocaleString()} ብር</span></p>
+            <div className="text-sm space-y-1">
+              <p className="text-muted-foreground">
+                Withdrawable Balance: <span className="font-mono font-semibold text-green-600">{Number(selectedUser?.withdrawable_balance || 0).toLocaleString()} ብር</span>
+              </p>
+              <p className="text-muted-foreground">
+                Playing Balance: <span className="font-mono font-semibold text-blue-600">{Number(selectedUser?.playing_balance || 0).toLocaleString()} ብር</span>
+              </p>
+              <p className="text-xs text-orange-600 mt-2">
+                ℹ️ Adjustment affects withdrawable balance (playing balance unchanged)
+              </p>
+            </div>
             <Input
               type="number"
               placeholder="Amount (positive to add, negative to deduct)"
@@ -288,13 +309,13 @@ export default function UsersPage() {
               onClick={() => {
                 if (!selectedUser) return;
                 const amount = Number(adjustAmount);
-                if (!Number.isFinite(amount)) {
-                  toast({ title: "Invalid amount", description: "Enter a valid number", variant: "destructive" });
+                if (!Number.isFinite(amount) || amount === 0) {
+                  toast({ title: "Invalid amount", description: "Enter a valid non-zero number", variant: "destructive" });
                   return;
                 }
                 adjustMut.mutate({ id: selectedUser.telegram_id, amount, reason: adjustReason.trim() });
               }}
-              disabled={!adjustReason.trim() || adjustMut.isPending || !Number.isFinite(Number(adjustAmount))}
+              disabled={!adjustReason.trim() || adjustMut.isPending || !Number.isFinite(Number(adjustAmount)) || Number(adjustAmount) === 0}
             >
               {adjustMut.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
               Apply Adjustment

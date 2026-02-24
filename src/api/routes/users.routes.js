@@ -138,19 +138,48 @@ router.post('/:telegramId/adjust-wallet', async (req, res) => {
     const numAmount = parseFloat(amount);
     if (isNaN(numAmount)) return res.status(400).json({ error: 'Invalid amount' });
 
-    const updated = await userService.updateBalance(telegramId, 'main', numAmount);
+    // Update both withdrawable_balance and main_wallet atomically (new balance model)
+    const { pool } = require('../../database');
+    const client = await pool.connect();
+    
+    try {
+      await client.query('BEGIN');
+      
+      const result = await client.query(
+        'UPDATE users SET withdrawable_balance = withdrawable_balance + $1, main_wallet = main_wallet + $1 WHERE telegram_id = $2 RETURNING withdrawable_balance, main_wallet',
+        [numAmount, telegramId]
+      );
+      
+      if (result.rows.length === 0) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({ error: 'User not found' });
+      }
+      
+      await client.query('COMMIT');
+      
+      const updated = result.rows[0];
 
-    await db.insert(auditLogs).values({
-      adminId: req.adminId,
-      adminName: req.adminName,
-      actionType: 'wallet_adjusted',
-      targetUser: String(telegramId),
-      amount: String(Math.abs(numAmount)),
-      details: `${numAmount > 0 ? '+' : ''}${numAmount} — ${reason}`,
-      ipAddress: req.adminIp,
-    });
+      await db.insert(auditLogs).values({
+        adminId: req.adminId,
+        adminName: req.adminName,
+        actionType: 'wallet_adjusted',
+        targetUser: String(telegramId),
+        amount: String(Math.abs(numAmount)),
+        details: `${numAmount > 0 ? '+' : ''}${numAmount} — ${reason}`,
+        ipAddress: req.adminIp,
+      });
 
-    res.json({ success: true, new_balance: Number(updated.mainWallet) });
+      res.json({ 
+        success: true, 
+        new_balance: Number(updated.main_wallet),
+        withdrawable_balance: Number(updated.withdrawable_balance)
+      });
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
   } catch (error) {
     console.error('Wallet adjust error:', error);
     res.status(500).json({ error: 'Failed to adjust wallet' });

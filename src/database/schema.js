@@ -211,8 +211,8 @@ const systemConfig = pgTable('system_config', {
   category: varchar('category', { length: 50 }).notNull(), // 'payment', 'limits', 'bonuses', 'game', 'features'
   description: text('description'),
   updatedBy: bigint('updated_by', { mode: 'number' }),
-  updatedAt: timestamp('updated_at').defaultNow(),
-  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
 // ─── System Configuration History Table ─────────────────────────────
@@ -224,7 +224,7 @@ const systemConfigHistory = pgTable('system_config_history', {
   valueType: varchar('value_type', { length: 20 }).notNull(),
   category: varchar('category', { length: 50 }).notNull(),
   changedBy: bigint('changed_by', { mode: 'number' }).notNull(),
-  changedAt: timestamp('changed_at').defaultNow(),
+  changedAt: timestamp('changed_at').defaultNow().notNull(),
 });
 
 // ─── Referral Tiers Table ───────────────────────────────────────────
@@ -234,9 +234,9 @@ const referralTiers = pgTable('referral_tiers', {
   minDeposit: numeric('min_deposit', { precision: 12, scale: 2 }).notNull(),
   maxDeposit: numeric('max_deposit', { precision: 12, scale: 2 }), // NULL = no upper limit
   bonusAmount: numeric('bonus_amount', { precision: 12, scale: 2 }).notNull(),
-  isActive: boolean('is_active').default(true),
-  createdAt: timestamp('created_at').defaultNow(),
-  updatedAt: timestamp('updated_at').defaultNow(),
+  isActive: boolean('is_active').default(true).notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
 
 // ─── Payment Accounts Table ─────────────────────────────────────────
@@ -246,13 +246,13 @@ const paymentAccounts = pgTable('payment_accounts', {
   provider: varchar('provider', { length: 20 }).notNull(), // 'telebirr', 'cbe'
   accountNumber: varchar('account_number', { length: 50 }).notNull(),
   accountName: varchar('account_name', { length: 100 }),
-  isActive: boolean('is_active').default(true),
-  priority: integer('priority').default(0),
+  isActive: boolean('is_active').default(true).notNull(),
+  priority: integer('priority').default(0).notNull(),
   dailyLimit: numeric('daily_limit', { precision: 12, scale: 2 }),
-  currentDailyTotal: numeric('current_daily_total', { precision: 12, scale: 2 }).default('0'),
-  lastResetDate: date('last_reset_date').defaultNow(),
-  createdAt: timestamp('created_at').defaultNow(),
-  updatedAt: timestamp('updated_at').defaultNow(),
+  currentDailyTotal: numeric('current_daily_total', { precision: 12, scale: 2 }).default('0').notNull(),
+  lastResetDate: date('last_reset_date').defaultNow().notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
 
 module.exports = { users, deposits, withdrawals, admins, auditLogs, fraudAlerts, gameRooms, games, boards, gamePlayers, calledNumbers, winPercentageRules, systemConfig, systemConfigHistory, referralTiers, paymentAccounts };

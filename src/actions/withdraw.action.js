@@ -100,9 +100,8 @@ const handleWithdrawConfirm = async (ctx) => {
 Your withdrawal will be processed soon.`, { parse_mode: 'Markdown' });
       
       // Notify admins (from DB)
-      const { getAllAdmins } = require('../config/admin');
-      const allAdmins = await getAllAdmins();
-      const activeAdmins = allAdmins.filter(a => a.isActive);
+      const { getActiveAdmins } = require('../config/admin');
+      const activeAdmins = await getActiveAdmins();
       for (const admin of activeAdmins) {
         try {
           await ctx.telegram.sendMessage(admin.telegramId, `🏧 *New Withdrawal Request*

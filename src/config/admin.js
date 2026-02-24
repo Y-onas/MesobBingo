@@ -7,6 +7,7 @@
 const { db } = require('../database');
 const { admins } = require('../database/schema');
 const { eq, and } = require('drizzle-orm');
+const logger = require('../utils/logger');
 
 // Admin roles
 const ROLES = {
@@ -46,7 +47,7 @@ const refreshAdminCache = async () => {
     }
     adminCacheExpiry = Date.now() + ADMIN_CACHE_TTL;
   } catch (error) {
-    console.error('Error refreshing admin cache:', error);
+    logger.error('Error refreshing admin cache:', error);
     // Keep using stale cache if DB fails
   }
 };
@@ -70,7 +71,7 @@ const isAdmin = async (userId) => {
 
     return admin.length > 0;
   } catch (error) {
-    console.error('Error checking admin status:', error);
+    logger.error('Error checking admin status:', error);
     return false;
   }
 };
@@ -94,7 +95,7 @@ const getAdminRole = async (userId) => {
 
     return admin.length > 0 ? admin[0].role : null;
   } catch (error) {
-    console.error('Error getting admin role:', error);
+    logger.error('Error getting admin role:', error);
     return null;
   }
 };
@@ -114,10 +115,21 @@ const hasPermission = async (userId, requiredRole) => {
 };
 
 /**
- * Get all admins
+ * Get all admins (active only by default)
+ * @param {boolean} includeInactive - Set to true to include inactive admins
  */
-const getAllAdmins = async () => {
-  return db.select().from(admins);
+const getAllAdmins = async (includeInactive = false) => {
+  if (includeInactive) {
+    return db.select().from(admins);
+  }
+  return db.select().from(admins).where(eq(admins.isActive, true));
+};
+
+/**
+ * Get all active admins (convenience function)
+ */
+const getActiveAdmins = async () => {
+  return db.select().from(admins).where(eq(admins.isActive, true));
 };
 
 /**
@@ -135,5 +147,6 @@ module.exports = {
   getAdminRole,
   hasPermission,
   getAllAdmins,
+  getActiveAdmins,
   clearAdminCache,
 };
