@@ -5,17 +5,22 @@
 -- Prevents data corruption from invalid values at the database level
 -- ────────────────────────────────────────────────────────────────────
 
--- Add CHECK constraint for value_type
+-- Add CHECK constraint for value_type (NOT VALID = skip existing row validation)
 ALTER TABLE system_config
-ADD CONSTRAINT chk_value_type CHECK (value_type IN ('string', 'number', 'boolean', 'json'));
+ADD CONSTRAINT chk_value_type CHECK (value_type IN ('string', 'number', 'boolean', 'json')) NOT VALID;
 
--- Add CHECK constraint for category
+-- Add CHECK constraint for category (NOT VALID = skip existing row validation)
 ALTER TABLE system_config
-ADD CONSTRAINT chk_category CHECK (category IN ('payment', 'limits', 'bonuses', 'game', 'features', 'messages'));
+ADD CONSTRAINT chk_category CHECK (category IN ('payment', 'limits', 'bonuses', 'game', 'features', 'messages')) NOT VALID;
 
--- Add CHECK constraint for payment_accounts provider
+-- Add CHECK constraint for payment_accounts provider (NOT VALID = skip existing row validation)
 ALTER TABLE payment_accounts
-ADD CONSTRAINT chk_provider CHECK (provider IN ('telebirr', 'cbe'));
+ADD CONSTRAINT chk_provider CHECK (provider IN ('telebirr', 'cbe')) NOT VALID;
+
+-- Validate constraints (checks all existing rows, fails if any invalid)
+ALTER TABLE system_config VALIDATE CONSTRAINT chk_value_type;
+ALTER TABLE system_config VALIDATE CONSTRAINT chk_category;
+ALTER TABLE payment_accounts VALIDATE CONSTRAINT chk_provider;
 
 -- ─── Auto-update updated_at Triggers ───────────────────────────────
 

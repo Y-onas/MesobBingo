@@ -1,9 +1,8 @@
-const { Pool } = require('pg');
+const { pool, closePool } = require('../../src/database');
 const logger = require('../../src/utils/logger');
 require('dotenv').config();
 
 async function runMigration() {
-  const pool = new Pool({ connectionString: process.env.DATABASE_URL });
   let client;
 
   try {
@@ -38,10 +37,18 @@ async function runMigration() {
     if (client) {
       client.release();
     }
-    await pool.end();
   }
 }
 
+// Run migration and close pool gracefully
+// NOTE: closePool() is required to shut down the shared connection pool
+// Without it, the event loop would hang and rely on process.exit() to terminate
 runMigration()
-  .then(() => process.exit(0))
-  .catch(() => process.exit(1));
+  .then(async () => {
+    await closePool();
+    process.exit(0);
+  })
+  .catch(async () => {
+    await closePool();
+    process.exit(1);
+  });

@@ -109,6 +109,7 @@ export default function SettingsPage() {
     try {
       await updateConfig(key, editValue);
       queryClient.invalidateQueries({ queryKey: ["configs"] });
+      queryClient.invalidateQueries({ queryKey: ["configHistory", key] });
       setEditingKey(null);
       toast({ title: "✅ Updated", description: `${key} saved successfully` });
     } catch (err: any) {
@@ -121,6 +122,7 @@ export default function SettingsPage() {
     try {
       await rollbackConfig(key);
       queryClient.invalidateQueries({ queryKey: ["configs"] });
+      queryClient.invalidateQueries({ queryKey: ["configHistory", key] });
       toast({ title: "Rolled back", description: key });
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
@@ -146,11 +148,29 @@ export default function SettingsPage() {
   const [tierForm, setTierForm] = useState({ minDeposit: "", maxDeposit: "", bonusAmount: "" });
 
   const handleAddTier = async () => {
+    const min = Number(tierForm.minDeposit);
+    const max = tierForm.maxDeposit ? Number(tierForm.maxDeposit) : null;
+    const bonus = Number(tierForm.bonusAmount);
+    
+    // Validate inputs
+    if (
+      !Number.isFinite(min) || min <= 0 ||
+      !Number.isFinite(bonus) || bonus <= 0 ||
+      (max !== null && (!Number.isFinite(max) || max < min))
+    ) {
+      toast({
+        title: "Validation Error",
+        description: "Please enter valid tier amounts (max ≥ min, all > 0).",
+        variant: "destructive",
+      });
+      return;
+    }
+    
     try {
       await upsertReferralTier({
-        minDeposit: Number(tierForm.minDeposit),
-        maxDeposit: tierForm.maxDeposit ? Number(tierForm.maxDeposit) : null,
-        bonusAmount: Number(tierForm.bonusAmount),
+        minDeposit: min,
+        maxDeposit: max,
+        bonusAmount: bonus,
       });
       queryClient.invalidateQueries({ queryKey: ["referralTiers"] });
       setTierForm({ minDeposit: "", maxDeposit: "", bonusAmount: "" });
@@ -162,9 +182,13 @@ export default function SettingsPage() {
 
   const handleDeleteTier = async (id: number) => {
     if (!confirm("Delete this tier?")) return;
-    await deleteReferralTier(id);
-    queryClient.invalidateQueries({ queryKey: ["referralTiers"] });
-    toast({ title: "Tier deleted" });
+    try {
+      await deleteReferralTier(id);
+      queryClient.invalidateQueries({ queryKey: ["referralTiers"] });
+      toast({ title: "Tier deleted" });
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    }
   };
 
   // ─── Payment Account Actions ───────────────────────────────────────
@@ -242,9 +266,13 @@ export default function SettingsPage() {
 
   const handleDeleteAccount = async (id: number) => {
     if (!confirm("Delete this account?")) return;
-    await deletePaymentAccount(id);
-    queryClient.invalidateQueries({ queryKey: ["paymentAccounts"] });
-    toast({ title: "Account deleted" });
+    try {
+      await deletePaymentAccount(id);
+      queryClient.invalidateQueries({ queryKey: ["paymentAccounts"] });
+      toast({ title: "Account deleted" });
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    }
   };
 
   // ─── Group configs by category ─────────────────────────────────────

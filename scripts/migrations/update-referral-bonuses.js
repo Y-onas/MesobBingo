@@ -21,7 +21,10 @@ async function updateReferralBonuses() {
     // Wrap both updates in a transaction for atomicity
     const [result1, result2] = await db.transaction(async (tx) => {
       const r1 = await tx.update(referralTiers)
-        .set({ bonusAmount: 10 })
+        .set({ 
+          bonusAmount: 10,
+          updatedAt: new Date() // Explicit update for audit trail
+        })
         .where(and(
           eq(referralTiers.minDeposit, 50),
           eq(referralTiers.maxDeposit, 99.99)
@@ -29,7 +32,10 @@ async function updateReferralBonuses() {
         .returning();
 
       const r2 = await tx.update(referralTiers)
-        .set({ bonusAmount: 15 })
+        .set({ 
+          bonusAmount: 15,
+          updatedAt: new Date() // Explicit update for audit trail
+        })
         .where(and(
           eq(referralTiers.minDeposit, 100),
           eq(referralTiers.maxDeposit, 199.99)

@@ -34,11 +34,22 @@ const jwtAuthMiddleware = async (req, res, next) => {
     
     next();
   } catch (err) {
+    // Handle token expiration
     if (err.name === 'TokenExpiredError') {
       return res.status(401).json({ error: 'Unauthorized — token expired', expired: true });
     }
-    logger.warn(`Invalid JWT token attempt from ${req.ip}`);
-    return res.status(401).json({ error: 'Unauthorized — invalid token' });
+    
+    // Handle JWT validation errors (malformed, invalid signature, etc.)
+    if (err.name === 'JsonWebTokenError' || err.name === 'NotBeforeError') {
+      logger.warn(`Invalid JWT token attempt from ${req.ip}`);
+      return res.status(401).json({ error: 'Unauthorized — invalid token' });
+    }
+    
+    // Handle unexpected errors (DB failures, etc.)
+    // This path is reached if getAdminRole throws despite its internal catch,
+    // or if other unexpected errors occur during JWT verification
+    logger.error(`Auth middleware unexpected error for ${req.ip}:`, err);
+    return res.status(500).json({ error: 'Internal server error' });
   }
 };
 

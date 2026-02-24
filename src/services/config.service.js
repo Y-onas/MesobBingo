@@ -13,13 +13,7 @@ const { systemConfig, systemConfigHistory, referralTiers, paymentAccounts } = re
 const { eq, desc, and, asc } = require('drizzle-orm');
 const logger = require('../utils/logger');
 const EventEmitter = require('events');
-
-const ROLES = {
-  SUPER_ADMIN: 'super_admin',
-  ADMIN: 'admin',           // NEW: Can do finance + support (but not manage admins or settings)
-  FINANCE_ADMIN: 'finance_admin',
-  SUPPORT_ADMIN: 'support_admin',
-};
+const { ROLES, ROLE_HIERARCHY } = require('../utils/roles');
 
 class ConfigService extends EventEmitter {
   constructor() {
@@ -54,7 +48,7 @@ class ConfigService extends EventEmitter {
   // ─── Required Placeholders for Messages ────────────────────────────
   // If an admin edits a message and forgets a required placeholder, the save is blocked.
   REQUIRED_PLACEHOLDERS = {
-    msg_balance: ['{mainWallet}', '{playWallet}', '{total}'],
+    msg_balance: ['{withdrawable}', '{playing}', '{total}'],
     msg_deposit_telebirr: ['{telebirrNumber}', '{telebirrName}', '{minDeposit}'],
     msg_deposit_cbe: ['{cbeAccount}', '{cbeAccountName}', '{minDeposit}'],
     msg_withdraw_prompt: ['{minWithdraw}'],
@@ -72,13 +66,6 @@ class ConfigService extends EventEmitter {
     limits: ROLES.SUPER_ADMIN,
     bonuses: ROLES.FINANCE_ADMIN,
     features: ROLES.SUPER_ADMIN, // Kill switches
-  };
-
-  ROLE_HIERARCHY = {
-    [ROLES.SUPER_ADMIN]: 4,
-    [ROLES.ADMIN]: 3,
-    [ROLES.FINANCE_ADMIN]: 2,
-    [ROLES.SUPPORT_ADMIN]: 1,
   };
 
   /**
@@ -150,11 +137,11 @@ class ConfigService extends EventEmitter {
         .where(eq(systemConfig.configKey, key));
     });
 
-    // 6. Hot reload - emit event for instant propagation
-    this.emit('config:changed', { key, value, adminId });
-
-    // 7. Force cache refresh
+    // 6. Force cache refresh so listeners see the new value immediately
     await this.forceRefresh();
+
+    // 7. Hot reload - emit event with new value already in cache
+    this.emit('config:changed', { key, value, adminId });
 
     logger.info(`Config updated: ${key} = ${value} by admin ${adminId}`);
   }
@@ -238,19 +225,6 @@ class ConfigService extends EventEmitter {
     }
 
     return config[0];
-  }
-
-  /**
-   * Save config change to history (versioning)
-   */
-  async saveToHistory(key, value, adminId, configMeta) {
-    await db.insert(systemConfigHistory).values({
-      configKey: key,
-      configValue: String(value),
-      valueType: configMeta.valueType,
-      category: configMeta.category,
-      changedBy: adminId,
-    });
   }
 
   /**

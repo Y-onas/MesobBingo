@@ -3,20 +3,30 @@ const { cancelKeyboard } = require('../keyboards/main.keyboard');
 const depositService = require('../services/deposit.service');
 const userService = require('../services/user.service');
 const configService = require('../services/config.service');
+const logger = require('../utils/logger');
 
 /**
  * Handle Telebirr payment selection
  */
 const handleTelebirr = async (ctx) => {
   try {
+    // Answer callback query early to prevent button hanging
+    await ctx.answerCbQuery();
+    
     ctx.session = ctx.session || {};
     ctx.session.state = SESSION_STATES.AWAITING_DEPOSIT_SMS;
     ctx.session.depositMethod = 'telebirr';
     
     // Get active Telebirr account from payment_accounts table
     const account = await configService.getActiveAccount('telebirr');
-    const telebirrNumber = account?.accountNumber || '0900000000';
-    const telebirrName = account?.accountName || 'Mesob Bingo';
+    
+    if (!account) {
+      await ctx.editMessageText('❌ Telebirr deposits are temporarily unavailable. Please contact support or try another payment method.');
+      return;
+    }
+    
+    const telebirrNumber = account.accountNumber;
+    const telebirrName = account.accountName || 'Mesob Bingo';
     const minDeposit = await configService.get('min_deposit', 50);
 
     const message = await configService.getMessage('msg_deposit_telebirr', {
@@ -25,11 +35,16 @@ const handleTelebirr = async (ctx) => {
       minDeposit,
     }, `📱 *Telebirr Deposit*\n\n1. Transfer money to: ${telebirrNumber}\n   Account Name: ${telebirrName}\n2. Take screenshot after transfer\n3. Send screenshot here\n\n⚠️ Minimum: ${minDeposit} ብር`);
     
-    await ctx.answerCbQuery();
     await ctx.editMessageText(message, { parse_mode: 'Markdown' });
     await ctx.reply('📝 Please paste the Telebirr SMS confirmation message.', cancelKeyboard());
   } catch (error) {
-    console.error('Error in telebirr action:', error);
+    logger.error('Error in telebirr action:', error);
+    try {
+      await ctx.answerCbQuery('Error');
+    } catch (e) {
+      // Ignore if already answered
+    }
+    await ctx.reply('❌ An error occurred while loading deposit information. Please try again or contact support.');
   }
 };
 
@@ -38,14 +53,23 @@ const handleTelebirr = async (ctx) => {
  */
 const handleCBE = async (ctx) => {
   try {
+    // Answer callback query early to prevent button hanging
+    await ctx.answerCbQuery();
+    
     ctx.session = ctx.session || {};
     ctx.session.state = SESSION_STATES.AWAITING_DEPOSIT_SMS;
     ctx.session.depositMethod = 'cbe';
     
     // Get active CBE account from payment_accounts table
     const account = await configService.getActiveAccount('cbe');
-    const cbeAccount = account?.accountNumber || '1000000000000';
-    const cbeAccountName = account?.accountName || 'Mesob Bingo';
+    
+    if (!account) {
+      await ctx.editMessageText('❌ CBE deposits are temporarily unavailable. Please contact support or try another payment method.');
+      return;
+    }
+    
+    const cbeAccount = account.accountNumber;
+    const cbeAccountName = account.accountName || 'Mesob Bingo';
     const minDeposit = await configService.get('min_deposit', 50);
 
     const message = await configService.getMessage('msg_deposit_cbe', {
@@ -54,11 +78,16 @@ const handleCBE = async (ctx) => {
       minDeposit,
     }, `🏦 *CBE Deposit*\n\n1. Deposit to Account: ${cbeAccount}\n   Account Name: ${cbeAccountName}\n2. Copy the SMS you receive\n3. Paste and send the full SMS here\n\n⚠️ Minimum: ${minDeposit} ብር`);
     
-    await ctx.answerCbQuery();
     await ctx.editMessageText(message, { parse_mode: 'Markdown' });
     await ctx.reply('📝 Please paste the CBE SMS confirmation message.', cancelKeyboard());
   } catch (error) {
-    console.error('Error in CBE action:', error);
+    logger.error('Error in CBE action:', error);
+    try {
+      await ctx.answerCbQuery('Error');
+    } catch (e) {
+      // Ignore if already answered
+    }
+    await ctx.reply('❌ An error occurred while loading deposit information. Please try again or contact support.');
   }
 };
 
@@ -67,15 +96,21 @@ const handleCBE = async (ctx) => {
  */
 const handleDepositCancel = async (ctx) => {
   try {
+    await ctx.answerCbQuery('Cancelled');
+    
     ctx.session = ctx.session || {};
     ctx.session.state = SESSION_STATES.NONE;
     ctx.session.depositMethod = null;
     
     const msg = await configService.getMessage('msg_deposit_cancelled', {}, '❌ Deposit cancelled.');
-    await ctx.answerCbQuery('Cancelled');
     await ctx.editMessageText(msg);
   } catch (error) {
-    console.error('Error in deposit cancel:', error);
+    logger.error('Error in deposit cancel:', error);
+    try {
+      await ctx.answerCbQuery('Error');
+    } catch (e) {
+      // Ignore if already answered
+    }
   }
 };
 

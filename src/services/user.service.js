@@ -99,6 +99,13 @@ const updatePlayingBalance = async (telegramId, amount) => {
   return updated;
 };
 
+// ─── Balance Getters ────────────────────────────────────────────────
+// NOTE: These functions each call getUser() separately. For callers that
+// need multiple balance types, consider using getUser() once and accessing
+// the fields directly to avoid redundant DB queries. This is fine at current
+// scale but could be optimized if hot-path usage grows.
+// ────────────────────────────────────────────────────────────────────
+
 /**
  * Get withdrawable balance
  */
@@ -240,7 +247,8 @@ const verifyPhone = async (telegramId, phone) => {
 
   // Grant welcome bonus only if not already claimed (goes to playing balance - not withdrawable)
   if (!user.bonusClaimed) {
-    const welcomeBonus = await configService.get('welcome_bonus', 5);
+    // Coerce to number with fallback to ensure valid numeric value for SQL
+    const welcomeBonus = Number(await configService.get('welcome_bonus', 5)) || 5;
     updates.playingBalance = sql`${users.playingBalance} + ${welcomeBonus}`;
     updates.playWallet = sql`${users.playWallet} + ${welcomeBonus}`;
     updates.bonusClaimed = true;

@@ -8,22 +8,7 @@ const { db } = require('../database');
 const { admins } = require('../database/schema');
 const { eq, and } = require('drizzle-orm');
 const logger = require('../utils/logger');
-
-// Admin roles
-const ROLES = {
-  SUPER_ADMIN: 'super_admin',
-  ADMIN: 'admin',           // NEW: Can do finance + support (but not manage admins or settings)
-  FINANCE_ADMIN: 'finance_admin',
-  SUPPORT_ADMIN: 'support_admin',
-};
-
-// Role hierarchy (higher number = more permissions)
-const ROLE_HIERARCHY = {
-  [ROLES.SUPER_ADMIN]: 4,
-  [ROLES.ADMIN]: 3,
-  [ROLES.FINANCE_ADMIN]: 2,
-  [ROLES.SUPPORT_ADMIN]: 1,
-};
+const { ROLES, ROLE_HIERARCHY } = require('../utils/roles');
 
 // ─── In-Memory Admin Cache ──────────────────────────────────────────
 let adminCache = new Map();
@@ -101,10 +86,15 @@ const isAdmin = async (userId) => {
  */
 const getAdminRole = async (userId) => {
   try {
-    await refreshAdminCache();
+    const didRefresh = await refreshAdminCache();
     const cached = adminCache.get(userId);
     if (cached) return cached.role;
 
+    // Only do DB fallback if cache was just refreshed (consistent with isAdmin)
+    // Otherwise return null immediately to avoid repeated DB queries for non-admins
+    if (!didRefresh) return null;
+
+    // Direct DB check as fallback (handles race condition after cache clear)
     const admin = await db.select()
       .from(admins)
       .where(and(

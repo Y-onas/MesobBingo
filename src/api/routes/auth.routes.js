@@ -86,14 +86,12 @@ router.post('/verify', async (req, res) => {
     try {
       const decoded = jwt.verify(token, JWT_SECRET);
       
-      // Revalidate admin status from database (ensures revocation takes immediate effect)
-      const adminActive = await isAdmin(decoded.telegramId);
-      if (!adminActive) {
+      // Fetch current role from database (implicitly validates active admin)
+      // getAdminRole returns null for inactive/non-existent admins
+      const currentRole = await getAdminRole(decoded.telegramId);
+      if (!currentRole) {
         return res.status(401).json({ error: 'Admin access revoked', revoked: true });
       }
-      
-      // Fetch current role from database (not stale JWT role)
-      const currentRole = await getAdminRole(decoded.telegramId);
       
       res.json({
         valid: true,

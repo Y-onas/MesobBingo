@@ -4,6 +4,8 @@ const { adminPanelKeyboard } = require('../keyboards/admin.keyboard');
 const { mainKeyboard } = require('../keyboards/main.keyboard');
 const adminService = require('../services/admin.service');
 const depositService = require('../services/deposit.service');
+const configService = require('../services/config.service');
+const { buildBroadcastKeyboard } = require('../utils/broadcast-helper');
 
 // Store bot instance for use in handlers
 let botInstance = null;
@@ -171,9 +173,6 @@ const handleBroadcastAddButton = (buttonType) => async (ctx) => {
     await ctx.answerCbQuery();
     await ctx.reply('📢 Broadcasting message with button...');
     
-    const configService = require('../services/config.service');
-    const { buildBroadcastKeyboard } = require('../utils/broadcast-helper');
-    
     // Get bot username from dynamic config and normalize it
     let botUsername = await configService.get('bot_username');
     
@@ -187,6 +186,11 @@ const handleBroadcastAddButton = (buttonType) => async (ctx) => {
     }
     
     const keyboard = buildBroadcastKeyboard(buttonType, botUsername);
+    
+    // Guard against uninitialized bot instance
+    if (!botInstance) {
+      return ctx.reply('❌ Bot not initialized. Please try again in a moment.');
+    }
     
     const result = await adminService.broadcastMessage(
       botInstance,
@@ -224,6 +228,11 @@ const handleBroadcastSendPlain = async (ctx) => {
     }
     
     await ctx.reply('📢 Broadcasting message...');
+    
+    // Guard against uninitialized bot instance
+    if (!botInstance) {
+      return ctx.reply('❌ Bot not initialized. Please try again in a moment.');
+    }
     
     const result = await adminService.broadcastMessage(
       botInstance,

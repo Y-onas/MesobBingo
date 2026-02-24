@@ -2,6 +2,7 @@ const { Markup } = require('telegraf');
 const { CURRENCY } = require('../../utils/constants');
 const configService = require('../../services/config.service');
 const userService = require('../../services/user.service');
+const logger = require('../../utils/logger');
 
 /**
  * Handle /invite command
@@ -85,7 +86,7 @@ ${tierText}
       ])
     });
   } catch (error) {
-    console.error('Error in invite command:', error);
+    logger.error('Error in invite command:', error);
     await ctx.reply('❌ An error occurred. Please try again.');
   }
 };

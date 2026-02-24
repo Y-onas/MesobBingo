@@ -176,7 +176,7 @@ const handleWithdrawAccountName = async (ctx, text) => {
   // Check for valid characters (Unicode letters, spaces, hyphens, apostrophes, periods)
   // Supports Latin, Amharic, and other Unicode scripts
   if (!/^[\p{L}\s\-'.]+$/u.test(accountHolderName)) {
-    return ctx.reply('❌ Invalid name format. Please use only letters, spaces, hyphens, and apostrophes.\n\nExample: Abebe Kebede');
+    return ctx.reply('❌ Invalid name format. Please use only letters, spaces, hyphens, apostrophes, and periods.\n\nExample: Abebe Kebede');
   }
   
   ctx.session.accountHolderName = accountHolderName;
@@ -213,6 +213,7 @@ const handleDepositSMS = async (ctx, text) => {
   const amountStr = amountMatch ? (amountMatch[1] || amountMatch[2] || amountMatch[3] || amountMatch[4]) : null;
   const amount = amountStr ? parseFloat(amountStr.replace(/,/g, '')) : null;
   
+  // Get min deposit with fallback: Number() returns NaN for invalid values, || 50 ensures valid number
   const MIN_DEPOSIT = Number(await configService.get('min_deposit', 50)) || 50;
 
   if (!amount || amount < MIN_DEPOSIT) {
