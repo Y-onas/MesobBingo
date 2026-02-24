@@ -66,47 +66,74 @@ const handleWithdrawConfirm = async (ctx) => {
     const amount = session.withdrawAmount;
     const method = session.withdrawMethod;
     const accountNumber = session.accountNumber;
+    const accountHolderName = session.accountHolderName;
     
-    if (!amount || !method || !accountNumber) {
+    if (!amount || !method || !accountNumber || !accountHolderName) {
       return ctx.answerCbQuery('Session expired. Please start over.');
     }
     
-    const withdrawal = await withdrawService.createWithdrawal(
-      ctx.from.id,
-      amount,
-      method,
-      accountNumber
-    );
-    
-    // Reset session
-    ctx.session.state = SESSION_STATES.NONE;
-    ctx.session.withdrawAmount = null;
-    ctx.session.withdrawMethod = null;
-    ctx.session.accountNumber = null;
-    
-    await ctx.answerCbQuery('Request submitted!');
-    await ctx.editMessageText(`✅ *Withdrawal Request Submitted*
+    try {
+      const withdrawal = await withdrawService.createWithdrawal(
+        ctx.from.id,
+        amount,
+        method,
+        accountNumber,
+        accountHolderName
+      );
+      
+      // Reset session
+      ctx.session.state = SESSION_STATES.NONE;
+      ctx.session.withdrawAmount = null;
+      ctx.session.withdrawMethod = null;
+      ctx.session.accountNumber = null;
+      ctx.session.accountHolderName = null;
+      
+      await ctx.answerCbQuery('Request submitted!');
+      await ctx.editMessageText(`✅ *Withdrawal Request Submitted*
 
 💰 Amount: ${amount.toFixed(2)} ${CURRENCY}
 📱 Method: ${method.toUpperCase()}
 📞 Account: ${accountNumber}
+👤 Name: ${accountHolderName}
 📋 Status: Pending
 
 Your withdrawal will be processed soon.`, { parse_mode: 'Markdown' });
-    
-    // Notify admins
-    const { ADMIN_IDS } = require('../config/env');
-    for (const adminId of ADMIN_IDS) {
-      try {
-        await ctx.telegram.sendMessage(adminId, `🏧 *New Withdrawal Request*
+      
+      // Notify admins (from DB)
+      const { getActiveAdmins } = require('../config/admin');
+      const activeAdmins = await getActiveAdmins();
+      for (const admin of activeAdmins) {
+        try {
+          await ctx.telegram.sendMessage(admin.telegramId, `🏧 *New Withdrawal Request*
 
 👤 User: ${ctx.from.first_name || ctx.from.id}
 🆔 ID: ${ctx.from.id}
 💰 Amount: ${amount.toFixed(2)} ${CURRENCY}
 📱 Method: ${method.toUpperCase()}
-📞 Account: ${accountNumber}`, { parse_mode: 'Markdown' });
-      } catch (err) {
-        // Admin may have blocked the bot
+📞 Account: ${accountNumber}
+👤 Account Holder: ${accountHolderName}`, { parse_mode: 'Markdown' });
+        } catch (err) {
+          // Admin may have blocked the bot
+        }
+      }
+    } catch (error) {
+      // Handle insufficient withdrawable balance error
+      if (error.message === 'INSUFFICIENT_WITHDRAWABLE_BALANCE') {
+        const withdrawable = error.withdrawableBalance.toFixed(2);
+        const playing = error.playingBalance.toFixed(2);
+        
+        await ctx.answerCbQuery('Insufficient withdrawable balance');
+        await ctx.editMessageText(`❌ *Insufficient Withdrawable Balance*
+
+Your withdrawable balance: *${withdrawable} ${CURRENCY}*
+You need to play and win more before withdrawing.
+
+Your playing balance: *${playing} ${CURRENCY}*
+(This money must be played first)
+
+💡 *Tip:* Only winnings can be withdrawn. Deposits and bonuses must be played in games first.`, { parse_mode: 'Markdown' });
+      } else {
+        throw error;
       }
     }
   } catch (error) {

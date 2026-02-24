@@ -57,7 +57,7 @@ To start playing and receive your *5 ብር welcome bonus*, please share your co
     }
 
     // Verified user — show main menu
-    const keyboard = isAdmin(telegramUser.id) ? adminKeyboard() : mainKeyboard();
+    const keyboard = await isAdmin(telegramUser.id) ? adminKeyboard() : mainKeyboard();
 
     const welcomeMessage = `🎰 *እንኳን ወደ ${BOT_NAME} በደህና መጡ!* 🎰
 

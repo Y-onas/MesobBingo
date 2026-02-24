@@ -7,6 +7,7 @@ const { BingoEngine } = require('../services/bingo-engine');
 const { CONNECTION_LIMITS } = require('../utils/constants');
 const { MAX_CONNECTIONS_PER_USER, MAX_CONNECTIONS_PER_IP, MAX_TOTAL_CONNECTIONS } = require('../config/env');
 const logger = require('../utils/logger');
+const userService = require('../services/user.service');
 
 let io = null;
 let connectionManager = null;
@@ -39,7 +40,7 @@ function initSocketServer(httpServer) {
   bingoEngine = new BingoEngine(io, connectionManager);
 
   // ─── Authentication Middleware ──────────────────────────────────
-  io.use((socket, next) => {
+  io.use(async (socket, next) => {
     try {
       const ip = socket.handshake.headers['x-forwarded-for'] ||
                  socket.handshake.address ||
@@ -73,6 +74,29 @@ function initSocketServer(httpServer) {
       }
 
       const telegramId = authResult.user.id;
+
+      // Check if user exists and has verified phone
+      try {
+        const user = await userService.getUser(telegramId);
+        
+        if (!user) {
+          logger.warn(`User not found: ${telegramId}`);
+          return next(new Error('User not found. Please use /start in the bot first.'));
+        }
+        
+        if (user.isBanned) {
+          logger.warn(`Banned user attempted connection: ${telegramId}`);
+          return next(new Error('Account suspended'));
+        }
+        
+        if (!user.phoneVerified) {
+          logger.warn(`Phone not verified: ${telegramId}`);
+          return next(new Error('Phone verification required. Please share your contact in the bot.'));
+        }
+      } catch (error) {
+        logger.error('User verification error:', error);
+        return next(new Error('Verification failed'));
+      }
 
       // Connection limits check
       if (!connectionManager.addConnection(socket.id, telegramId, ip)) {

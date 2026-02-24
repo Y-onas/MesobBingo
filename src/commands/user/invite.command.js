@@ -1,7 +1,8 @@
 const { Markup } = require('telegraf');
-const { MESSAGES, BOT_USERNAME, CURRENCY, EMOJI } = require('../../utils/constants');
-const { REFERRAL_BONUS } = require('../../config/env');
+const { CURRENCY } = require('../../utils/constants');
+const configService = require('../../services/config.service');
 const userService = require('../../services/user.service');
+const logger = require('../../utils/logger');
 
 /**
  * Handle /invite command
@@ -14,41 +15,78 @@ const inviteCommand = async (ctx) => {
       return ctx.reply('Please use /start first.');
     }
     
-    const referralLink = `https://t.me/${BOT_USERNAME}?start=ref_${ctx.from.id}`;
+    // Get bot username from dynamic config and normalize it
+    let botUsername = await configService.get('bot_username');
     
-    const message = `🤝 *Invite Friends & Earn Bonus!*
-🚀
+    // Normalize: trim whitespace and remove leading '@' if present
+    if (botUsername) {
+      botUsername = botUsername.trim().replace(/^@/, '');
+    }
+    
+    // Validate bot username is configured
+    if (!botUsername) {
+      await ctx.reply('❌ Bot username is not configured. Please contact support.');
+      return;
+    }
+    
+    const referralLink = `https://t.me/${botUsername}?start=ref_${ctx.from.id}`;
+    
+    // Get dynamic referral tiers from DB
+    const tiers = (await configService.getReferralTiers()) ?? [];
+    const minDeposit = await configService.get('min_deposit', 50);
 
-Share your personal link:
-\`${referralLink}\`
+    let tierText = '';
+    if (Array.isArray(tiers) && tiers.length > 0) {
+      tierText = tiers.map(t => {
+        const min = Number(t.minDeposit).toFixed(0);
+        const hasMax = t.maxDeposit !== null && t.maxDeposit !== undefined;
+        const max = hasMax ? Number(t.maxDeposit).toFixed(0) : '+';
+        const bonus = Number(t.bonusAmount).toFixed(0);
+        return `   💎 ${min}-${max} ${CURRENCY} → *${bonus} ${CURRENCY}* ቦነስ`;
+      }).join('\n');
+    } else {
+      tierText = `   💎 50-99 ${CURRENCY} → *10 ${CURRENCY}* ቦነስ
+   💎 100-199 ${CURRENCY} → *15 ${CURRENCY}* ቦነስ
+   💎 200-499 ${CURRENCY} → *20 ${CURRENCY}* ቦነስ
+   💎 500+ ${CURRENCY} → *30 ${CURRENCY}* ቦነስ`;
+    }
 
-*How it works:*
-💰 You earn a bonus when your referral makes their *FIRST deposit*:
-
-📊 *Bonus Tiers:*
-• 50-99 ${CURRENCY} deposit → You get 5 ${CURRENCY}
-• 100-199 ${CURRENCY} deposit → You get 10 ${CURRENCY}
-• 200-499 ${CURRENCY} deposit → You get 20 ${CURRENCY}
-• 500+ ${CURRENCY} deposit → You get 30 ${CURRENCY}
-
-⚠️ Minimum deposit: 50 ${CURRENCY} to qualify
+    const message = `🤝 *ጓደኞችዎን ይጋብዙ — ቦነስ ያግኙ!* 🚀
 
 ━━━━━━━━━━━━━━━━
-📊 *Your Referral Stats:*
-👥 Total Referrals: ${user.referralCount}
-💰 Total Earnings: ${user.referralEarnings.toFixed(2)} ${CURRENCY}`;
+🔗 *የእርስዎ ሊንክ:*
+\`${referralLink}\`
+
+━━━━━━━━━━━━━━━━
+📖 *እንዴት ይሰራል:*
+
+1️⃣ ሊንክዎን ለጓደኛዎ ያጋሩ
+2️⃣ ጓደኛዎ Mesob Bingo ይቀላቀላል
+3️⃣ ጓደኛዎ የመጀመሪያ ዲፖዚት ሲያደርግ — 
+   *እርስዎ ቦነስ ያገኛሉ!* 🎁
+
+━━━━━━━━━━━━━━━━
+📊 *ቦነስ ደረጃዎች:*
+${tierText}
+
+⚠️ ዝቅተኛ ዲፖዚት: ${minDeposit} ${CURRENCY}
+
+━━━━━━━━━━━━━━━━
+📈 *የእርስዎ ውጤት:*
+👥 ጠቅላላ ሪፈራሎች: *${user.referralCount}*
+💰 ጠቅላላ ገቢ: *${Number(user.referralEarnings).toFixed(2)} ${CURRENCY}*`;
     
     await ctx.reply(message, {
       parse_mode: 'Markdown',
       ...Markup.inlineKeyboard([
         [
-          Markup.button.url('🔗 Open Link', referralLink),
-          Markup.button.switchToChat('📤 Share', `Join me on Mesob Bingo! 🎰\n${referralLink}`)
+          Markup.button.url('🔗 ሊንክ ክፈት', referralLink),
+          Markup.button.switchToChat('📤 ለጓደኛ ላክ', `Mesob Bingo ተቀላቀል! 🎰\n${referralLink}`)
         ]
       ])
     });
   } catch (error) {
-    console.error('Error in invite command:', error);
+    logger.error('Error in invite command:', error);
     await ctx.reply('❌ An error occurred. Please try again.');
   }
 };

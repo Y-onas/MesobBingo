@@ -1,14 +1,16 @@
-const { MESSAGES, CURRENCY } = require('../../utils/constants');
+const { CURRENCY } = require('../../utils/constants');
 const { isAdmin } = require('../../config/admin');
 const adminService = require('../../services/admin.service');
+const configService = require('../../services/config.service');
 
 /**
  * Handle /users command
  */
 const usersCommand = async (ctx) => {
   try {
-    if (!isAdmin(ctx.from.id)) {
-      return ctx.reply(MESSAGES.ADMIN_ONLY);
+    if (!await isAdmin(ctx.from.id)) {
+      const msg = await configService.getMessage('msg_admin_only', {}, '⚠️ This command is for admins only.');
+      return ctx.reply(msg);
     }
     
     const stats = await adminService.getStats();

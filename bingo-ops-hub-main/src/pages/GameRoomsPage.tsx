@@ -15,6 +15,7 @@ export default function GameRoomsPage() {
   const { toast } = useToast();
   const [showCreate, setShowCreate] = useState(false);
   const [editingRoom, setEditingRoom] = useState<any>(null);
+  const [deletingRoom, setDeletingRoom] = useState<any>(null);
   const [form, setForm] = useState({
     name: "", entry_fee: "", min_players: "5", max_players: "20", countdown_time: "120", winning_percentage: "75",
   });
@@ -283,9 +284,13 @@ export default function GameRoomsPage() {
     mutationFn: (id: number) => deleteGameRoom(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["game-rooms"] });
+      setDeletingRoom(null);
       toast({ title: "Game room deleted ✓" });
     },
-    onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+    onError: (e: Error) => {
+      toast({ title: "Error", description: e.message, variant: "destructive" });
+      setDeletingRoom(null);
+    },
   });
 
 
@@ -340,9 +345,13 @@ export default function GameRoomsPage() {
     setWinRanges(updated);
   };
 
-  const handleDelete = (id: number) => {
-    if (confirm("Are you sure you want to delete this room?")) {
-      deleteMut.mutate(id);
+  const handleDelete = (room: any) => {
+    setDeletingRoom(room);
+  };
+
+  const confirmDelete = () => {
+    if (deletingRoom) {
+      deleteMut.mutate(deletingRoom.id);
     }
   };
 
@@ -438,7 +447,7 @@ export default function GameRoomsPage() {
                 <Button 
                   size="sm" 
                   variant="destructive" 
-                  onClick={() => handleDelete(room.id)}
+                  onClick={() => handleDelete(room)}
                   disabled={deleteMut.isPending}
                   className="gap-1"
                 >
@@ -573,6 +582,43 @@ export default function GameRoomsPage() {
             >
               {(createMut.isPending || updateMut.isPending) ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
               {editingRoom ? "Update" : "Create"} Room
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={!!deletingRoom} onOpenChange={(open) => !open && setDeletingRoom(null)}>
+        <DialogContent className="bg-card border-border">
+          <DialogHeader>
+            <DialogTitle>Delete Game Room</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Are you sure you want to delete <span className="font-semibold text-foreground">{deletingRoom?.name}</span>?
+            </p>
+            <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-3">
+              <p className="text-sm text-destructive font-medium">⚠️ This action cannot be undone</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                All data associated with this room will be permanently deleted.
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button 
+              variant="outline" 
+              onClick={() => setDeletingRoom(null)}
+              disabled={deleteMut.isPending}
+            >
+              Cancel
+            </Button>
+            <Button 
+              variant="destructive" 
+              onClick={confirmDelete}
+              disabled={deleteMut.isPending}
+            >
+              {deleteMut.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              Delete Room
             </Button>
           </DialogFooter>
         </DialogContent>

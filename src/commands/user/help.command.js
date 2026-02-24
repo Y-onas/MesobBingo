@@ -1,37 +1,50 @@
-const { MESSAGES } = require('../../utils/constants');
+const configService = require('../../services/config.service');
+const { CURRENCY } = require('../../utils/constants');
 
 /**
  * Handle /help command
  */
 const helpCommand = async (ctx) => {
   try {
-    const message = `📖 *How To Play*
+    // Get dynamic game stakes
+    const defaultStakes = [10, 20, 50, 100, 200];
+    const stakes = await configService.get('game_stakes', defaultStakes);
+    const stakesDisplay = Array.isArray(stakes) ? stakes.join(', ') : stakes;
 
-Pick a stake → choose a board → select numbers.
+    // Get dynamic min deposit
+    const minDeposit = await configService.get('min_deposit', 50);
 
-*ደረጃ 1:* ገንዘብ ያስቀምጡ (Deposit)
-ከመጫወትዎ በፊት ገንዘብ ማስቀመጥ ያስፈልግዎታል። Telebirr ወይም CBE ይጠቀሙ።
-
-*ደረጃ 2:* 🎰 Play ይንኩ
-ከዋናው ምናሌ Play የሚለውን ይምረጡ።
-
-*ደረጃ 3:* Stake ይምረጡ
-5, 10, 20, 50, ወይም 100 ብር ይምረጡ።
-
-*ደረጃ 4:* Board ይምረጡ
-ከ Board A-E ውስጥ አንዱን ይምረጡ።
-
-*ደረጃ 5:* ቁጥሮችዎን ይምረጡ
-ከ 1-90 ውስጥ 5 ቁጥሮች ይምረጡ።
-
-*ደረጃ 6:* Play ይጫኑ!
-ካሸነፉ ወዲያውኑ ገንዘቡ ወደ ዋሌትዎ ይገባል!
+    const message = `📖 *እንዴት እንደሚጫወቱ — Mesob Bingo*
 
 ━━━━━━━━━━━━━━━━
-*🎯 Winning Prizes:*
-• 3 matches = 2x your stake
-• 4 matches = 5x your stake
-• 5 matches = 100x JACKPOT! 🎉`;
+💰 *ደረጃ 1: ገንዘብ ያስቀምጡ (Deposit)*
+ከመጫወትዎ በፊት ገንዘብ ማስቀመጥ ያስፈልግዎታል።
+Telebirr ወይም CBE ይጠቀሙ።
+ዝቅተኛ ተቀማጭ: ${minDeposit} ${CURRENCY}
+
+🎮 *ደረጃ 2: 🎰 Play ይንኩ*
+ከዋናው ምናሌ Play የሚለውን ይምረጡ።
+
+💵 *ደረጃ 3: Stake ይምረጡ*
+${stakesDisplay} ${CURRENCY} ከሚሉት ውስጥ ይምረጡ።
+
+🏠 *ደረጃ 4: Game Room ይቀላቀሉ*
+ከሌሎች ተጫዋቾች ጋር የ Game Room ይቀላቀሉ።
+ሁሉም ተጫዋቾች ሲገቡ ጨዋታው ይጀምራል!
+
+🎱 *ደረጃ 5: ቁጥሮች ይጠራሉ*
+ቁጥሮች በቅደም ተከተል ይጠራሉ — 
+ቦርድዎ ላይ ካለ ያድምቁ!
+
+🏆 *ደረጃ 6: BINGO!*
+ቦርድዎን ሙሉ ለሙሉ ከሞሉ — እርስዎ አሸናፊ ነዎት! 🎉
+ገንዘቡ ወዲያውኑ ወደ ዋሌትዎ ይገባል!
+
+━━━━━━━━━━━━━━━━
+🎯 *Winning:*
+• ያሸነፉ ገንዘብ ወደ Main Wallet ይገባል
+• ማውጣት (Withdraw) Telebirr/CBE ይቻላል
+• ጓደኛዎን ይጋብዙ — ተጨማሪ ቦነስ ያግኙ! /invite`;
     
     await ctx.reply(message, { parse_mode: 'Markdown' });
   } catch (error) {

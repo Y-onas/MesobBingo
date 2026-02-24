@@ -4,6 +4,7 @@ const { db } = require('../../database');
 const { withdrawals, users, auditLogs } = require('../../database/schema');
 const withdrawService = require('../../services/withdraw.service');
 const { notifyUser } = require('../telegram');
+const logger = require('../../utils/logger');
 
 const router = Router();
 
@@ -19,6 +20,7 @@ router.get('/', async (req, res) => {
         amount: withdrawals.amount,
         method: withdrawals.method,
         accountNumber: withdrawals.accountNumber,
+        accountHolderName: withdrawals.accountHolderName,
         status: withdrawals.status,
         assignedAdmin: withdrawals.assignedAdmin,
         processedBy: withdrawals.processedBy,
@@ -29,6 +31,8 @@ router.get('/', async (req, res) => {
         username: users.username,
         firstName: users.firstName,
         mainWallet: users.mainWallet,
+        withdrawableBalance: users.withdrawableBalance,
+        playingBalance: users.playingBalance,
         totalDeposited: users.totalDeposited,
         totalWithdrawn: users.totalWithdrawn,
         gamesPlayed: users.gamesPlayed,
@@ -51,11 +55,14 @@ router.get('/', async (req, res) => {
       amount: Number(r.amount),
       payment_method: r.method,
       account_details: r.accountNumber,
+      account_holder_name: r.accountHolderName || 'Not provided',
       created_at: r.createdAt,
       status: r.status,
       assigned_admin: r.assignedAdmin,
       rejection_reason: r.rejectionReason,
       user_wallet: Number(r.mainWallet || 0),
+      user_withdrawable_balance: Number(r.withdrawableBalance || 0),
+      user_playing_balance: Number(r.playingBalance || 0),
       user_total_deposited: Number(r.totalDeposited || 0),
       user_total_withdrawn: Number(r.totalWithdrawn || 0),
       user_games_played: Number(r.gamesPlayed || 0),
@@ -64,7 +71,7 @@ router.get('/', async (req, res) => {
 
     res.json(result);
   } catch (error) {
-    console.error('Withdrawals list error:', error);
+    logger.error('Withdrawals list error:', error);
     res.status(500).json({ error: 'Failed to fetch withdrawals' });
   }
 });
@@ -90,7 +97,7 @@ router.post('/:id/review', async (req, res) => {
 
     res.json(updated);
   } catch (error) {
-    console.error('Withdrawal review error:', error);
+    logger.error('Withdrawal review error:', error);
     res.status(500).json({ error: 'Failed to lock withdrawal' });
   }
 });
@@ -105,7 +112,16 @@ router.post('/:id/approve', async (req, res) => {
     // Verify ownership and status
     const [w] = await db.select().from(withdrawals).where(eq(withdrawals.id, withdrawalId)).limit(1);
     if (!w) return res.status(404).json({ error: 'Withdrawal not found' });
-    if (w.status !== 'under_review' || w.assignedAdmin !== adminId) {
+    
+    // Validate account holder name exists
+    if (!w.accountHolderName || w.accountHolderName.trim().length < 3) {
+      return res.status(400).json({ 
+        error: 'Cannot approve: Account holder name is missing or invalid. Please contact user to resubmit.' 
+      });
+    }
+    
+    // Compare as strings to handle type mismatches
+    if (w.status !== 'under_review' || String(w.assignedAdmin) !== String(adminId)) {
       return res.status(409).json({ error: 'Withdrawal not locked by this admin' });
     }
 
@@ -125,7 +141,7 @@ router.post('/:id/approve', async (req, res) => {
     // Notify user via Telegram
     notifyUser(result.telegramId, `✅ *Withdrawal Approved!*\n\nYour withdrawal of *${Number(result.amount).toFixed(2)} ብር* has been processed!\n\nThe funds will be sent to your account shortly.`);
   } catch (error) {
-    console.error('Withdrawal approve error:', error);
+    logger.error('Withdrawal approve error:', error);
     res.status(400).json({ error: error.message });
   }
 });
@@ -138,18 +154,18 @@ router.post('/:id/reject', async (req, res) => {
     const adminId = req.adminId;
     const adminName = req.adminName;
 
-    if (!reason || !reason.trim()) {
-      return res.status(400).json({ error: 'Rejection reason is required' });
-    }
+    // Reason is optional - use default if not provided
+    const rejectionReason = reason && reason.trim() ? reason.trim() : 'Rejected by admin';
 
     // Verify ownership and status
     const [w] = await db.select().from(withdrawals).where(eq(withdrawals.id, withdrawalId)).limit(1);
     if (!w) return res.status(404).json({ error: 'Withdrawal not found' });
-    if (w.status !== 'under_review' || w.assignedAdmin !== adminId) {
+    // Compare as strings to handle type mismatches
+    if (w.status !== 'under_review' || String(w.assignedAdmin) !== String(adminId)) {
       return res.status(409).json({ error: 'Withdrawal not locked by this admin' });
     }
 
-    const result = await withdrawService.rejectWithdrawal(withdrawalId, adminId, reason);
+    const result = await withdrawService.rejectWithdrawal(withdrawalId, adminId, rejectionReason);
 
     await db.insert(auditLogs).values({
       adminId: String(adminId),
@@ -157,16 +173,16 @@ router.post('/:id/reject', async (req, res) => {
       actionType: 'withdrawal_rejected',
       targetUser: String(result.telegramId),
       amount: result.amount,
-      details: reason,
+      details: rejectionReason,
       ipAddress: req.adminIp,
     });
 
     res.json({ success: true, withdrawal: result });
 
     // Notify user via Telegram
-    notifyUser(result.telegramId, `❌ *Withdrawal Rejected*\n\nYour withdrawal of *${Number(result.amount).toFixed(2)} ብር* was rejected.\n\nReason: ${reason}\n\nThe amount has been refunded to your wallet.`);
+    notifyUser(result.telegramId, `❌ *Withdrawal Rejected*\n\nYour withdrawal of *${Number(result.amount).toFixed(2)} ብር* was rejected.\n\nReason: ${rejectionReason}\n\nThe amount has been refunded to your wallet.`);
   } catch (error) {
-    console.error('Withdrawal reject error:', error);
+    logger.error('Withdrawal reject error:', error);
     res.status(400).json({ error: error.message });
   }
 });

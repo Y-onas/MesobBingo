@@ -205,6 +205,8 @@ const Index = () => {
         <LobbyScreen
           rooms={state.rooms}
           balance={state.balance.total}
+          withdrawable={state.balance.withdrawable}
+          playing={state.balance.playing}
           onSelectGame={handleSelectGame}
           onRefreshBalance={handleRefreshBalance}
           connectionStatus={status}

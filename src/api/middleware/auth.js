@@ -1,12 +1,13 @@
 const jwt = require('jsonwebtoken');
 const { ADMIN_API_KEY, JWT_SECRET } = require('../../config/env');
 const logger = require('../../utils/logger');
+const { getAdminRole } = require('../../config/admin');
 
 /**
  * JWT-based authentication middleware (preferred)
  * Verifies JWT token from Authorization header
  */
-const jwtAuthMiddleware = (req, res, next) => {
+const jwtAuthMiddleware = async (req, res, next) => {
   const authHeader = req.headers.authorization;
   
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -18,19 +19,37 @@ const jwtAuthMiddleware = (req, res, next) => {
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
     
-    // Attach admin info from token
+    // Fetch current role from database (ensures role changes take immediate effect)
+    // getAdminRole returns null for inactive/non-existent admins
+    const currentRole = await getAdminRole(decoded.telegramId);
+    if (!currentRole) {
+      return res.status(401).json({ error: 'Unauthorized — admin access revoked', revoked: true });
+    }
+    
+    // Attach admin info with current role from DB
     req.adminId = decoded.telegramId;
     req.adminName = decoded.name || `Admin ${decoded.telegramId}`;
-    req.adminRole = decoded.role;
+    req.adminRole = currentRole;
     req.adminIp = req.ip || req.connection?.remoteAddress || '0.0.0.0';
     
     next();
   } catch (err) {
+    // Handle token expiration
     if (err.name === 'TokenExpiredError') {
       return res.status(401).json({ error: 'Unauthorized — token expired', expired: true });
     }
-    logger.warn(`Invalid JWT token attempt from ${req.ip}`);
-    return res.status(401).json({ error: 'Unauthorized — invalid token' });
+    
+    // Handle JWT validation errors (malformed, invalid signature, etc.)
+    if (err.name === 'JsonWebTokenError' || err.name === 'NotBeforeError') {
+      logger.warn(`Invalid JWT token attempt from ${req.ip}`);
+      return res.status(401).json({ error: 'Unauthorized — invalid token' });
+    }
+    
+    // Handle unexpected errors (DB failures, etc.)
+    // This path is reached if getAdminRole throws despite its internal catch,
+    // or if other unexpected errors occur during JWT verification
+    logger.error(`Auth middleware unexpected error for ${req.ip}:`, err);
+    return res.status(500).json({ error: 'Internal server error' });
   }
 };
 

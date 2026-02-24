@@ -21,6 +21,10 @@ const main = async () => {
 
     // Create Express app and HTTP server
     const apiApp = createApiServer();
+    
+    // Attach bot instance to Express app for use in routes
+    apiApp.set('bot', bot);
+    
     const port = API_PORT || 3001;
     const httpServer = http.createServer(apiApp);
 
@@ -78,11 +82,12 @@ const main = async () => {
       logger.error('FATAL: Uncaught exception', err);
       
       try {
-        // Alert admin via bot
-        const { ADMIN_IDS } = require('./config/env');
-        for (const adminId of ADMIN_IDS) {
+        // Alert admin via bot (from DB)
+        const { getActiveAdmins } = require('./config/admin');
+        const activeAdmins = await getActiveAdmins();
+        for (const admin of activeAdmins) {
           try {
-            await bot.telegram.sendMessage(adminId, `🚨 CRASH: ${err.message}`);
+            await bot.telegram.sendMessage(admin.telegramId, `🚨 CRASH: ${err.message}`);
           } catch (e) { /* ignore send error */ }
         }
       } catch (e) { /* ignore */ }

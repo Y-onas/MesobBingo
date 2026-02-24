@@ -6,17 +6,21 @@ import type { ConnectionStatus } from "@/hooks/useSocket";
 interface LobbyScreenProps {
   rooms: GameRoom[];
   balance: number;
+  withdrawable?: number;
+  playing?: number;
   onSelectGame: (roomId: number) => void;
   onRefreshBalance: () => void;
   connectionStatus: ConnectionStatus;
 }
 
-const LobbyScreen = ({ rooms, balance, onSelectGame, onRefreshBalance, connectionStatus }: LobbyScreenProps) => {
+const LobbyScreen = ({ rooms, balance, withdrawable, playing, onSelectGame, onRefreshBalance, connectionStatus }: LobbyScreenProps) => {
+  // Sort rooms by entry fee (stake) in ascending order
+  const sortedRooms = [...rooms].sort((a, b) => a.entryFee - b.entryFee);
   const totalOnline = rooms.reduce((sum, r) => sum + r.currentPlayers, 0);
 
   return (
     <div className="h-screen flex flex-col overflow-hidden">
-      <Header balance={balance} onRefresh={onRefreshBalance} />
+      <Header balance={balance} withdrawable={withdrawable} playing={playing} onRefresh={onRefreshBalance} />
 
       {/* Game Rooms */}
       <div className="flex-1 px-2.5 py-1.5 space-y-1.5 overflow-y-auto">
@@ -41,7 +45,7 @@ const LobbyScreen = ({ rooms, balance, onSelectGame, onRefreshBalance, connectio
           </div>
         )}
         
-        {rooms.map((room) => (
+        {sortedRooms.map((room) => (
           <GameRoomCard
             key={room.id}
             stake={room.entryFee}

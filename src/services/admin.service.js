@@ -47,7 +47,7 @@ const getStats = async () => {
 /**
  * Broadcast message to users
  */
-const broadcastMessage = async (bot, message, depositorsOnly = false) => {
+const broadcastMessage = async (bot, message, depositorsOnly = false, options = {}, imageUrl = null) => {
   try {
     const userList = depositorsOnly
       ? await userService.getDepositors()
@@ -58,9 +58,20 @@ const broadcastMessage = async (bot, message, depositorsOnly = false) => {
 
     for (const user of userList) {
       try {
-        await bot.telegram.sendMessage(user.telegramId, message, {
-          parse_mode: 'Markdown',
-        });
+        if (imageUrl) {
+          // Send photo with caption
+          await bot.telegram.sendPhoto(user.telegramId, imageUrl, {
+            caption: message,
+            parse_mode: 'Markdown',
+            ...options
+          });
+        } else {
+          // Send text message
+          await bot.telegram.sendMessage(user.telegramId, message, {
+            parse_mode: 'Markdown',
+            ...options
+          });
+        }
         success++;
         // Rate limiting
         await new Promise(resolve => setTimeout(resolve, 50));

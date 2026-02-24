@@ -50,6 +50,55 @@
       "when": 1771424073583,
       "tag": "0006_add_pause_fields",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1771424073584,
+      "tag": "0007_add_dynamic_config",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1771424073585,
+      "tag": "0008_add_withdrawal_account_name",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1771424073586,
+      "tag": "0009_add_withdrawable_balance",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1771424073587,
+      "tag": "0010_add_not_null_constraints",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1771424073588,
+      "tag": "0011_add_dynamic_config_constraints",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1771424073589,
+      "tag": "0012_add_referral_tier_constraints",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1771424073590,
+      "tag": "0013_remove_duplicate_payment_config",
+      "breakpoints": true
     }
   ]
 }

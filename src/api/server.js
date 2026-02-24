@@ -12,6 +12,9 @@ const auditRoutes = require('./routes/audit.routes');
 const fraudRoutes = require('./routes/fraud.routes');
 const gamesRoutes = require('./routes/games.routes');
 const authRoutes = require('./routes/auth.routes');
+const configRoutes = require('./routes/config.routes');
+const adminManagementRoutes = require('./routes/admin-management.routes');
+const broadcastRoutes = require('./routes/broadcast.routes');
 
 const createApiServer = () => {
   const app = express();
@@ -58,6 +61,9 @@ const createApiServer = () => {
   app.use('/api/audit-logs', authMiddleware, auditRoutes);
   app.use('/api/fraud-alerts', authMiddleware, fraudRoutes);
   app.use('/api/game-rooms', authMiddleware, gamesRoutes);
+  app.use('/api/configs', authMiddleware, configRoutes);
+  app.use('/api/admin/admins', authMiddleware, adminManagementRoutes);
+  app.use('/api/broadcast', authMiddleware, broadcastRoutes);
 
   // Serve static files for the web game
   const gameStaticPath = path.join(__dirname, '../../mesob-bingo-card-main/dist');

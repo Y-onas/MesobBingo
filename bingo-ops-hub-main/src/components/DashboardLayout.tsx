@@ -12,6 +12,9 @@ import {
   PanelLeftOpen,
   LogOut,
   Menu,
+  Settings,
+  Shield,
+  Radio,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -23,9 +26,12 @@ const navItems = [
   { to: "/deposits", label: "Deposits", icon: ArrowDownCircle },
   { to: "/withdrawals", label: "Withdrawals", icon: ArrowUpCircle },
   { to: "/users", label: "Users", icon: Users },
+  { to: "/broadcast", label: "Broadcast", icon: Radio },
   { to: "/fraud-alerts", label: "Fraud Alerts", icon: AlertTriangle },
   { to: "/game-rooms", label: "Game Rooms", icon: Gamepad2 },
   { to: "/audit-log", label: "Audit Log", icon: ClipboardList },
+  { to: "/settings", label: "Settings", icon: Settings },
+  { to: "/admin-management", label: "Admin Mgmt", icon: Shield },
 ];
 
 function SidebarContent({ collapsed, onLogout }: { collapsed: boolean; onLogout: () => void }) {

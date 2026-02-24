@@ -1,11 +1,13 @@
 const { Markup } = require('telegraf');
-const { GAME_STAKES, EMOJI } = require('../utils/constants');
+const { EMOJI } = require('../utils/constants');
+const configService = require('../services/config.service');
 
 /**
  * Stake selection keyboard
  */
-const stakeKeyboard = () => {
-  const buttons = GAME_STAKES.map(stake => 
+const stakeKeyboard = async () => {
+  const stakes = await configService.get('game_stakes', [10, 20, 50, 100]);
+  const buttons = stakes.map(stake => 
     Markup.button.callback(`${stake} ብር`, `game_stake_${stake}`)
   );
   

@@ -7,7 +7,7 @@ const getToken = () => localStorage.getItem('mesob_admin_token');
 
 async function apiRequest<T>(path: string, options: RequestInit = {}): Promise<T> {
     const token = getToken();
-    
+
     if (!token) {
         // Redirect to login if no token
         window.location.href = '/login';
@@ -189,3 +189,93 @@ export const toggleDynamicPercentage = (roomId: number, enabled: boolean) =>
         method: 'PATCH',
         body: JSON.stringify({ use_dynamic_percentage: enabled }),
     });
+
+// ─── System Configuration ────────────────────────────────────────────
+export const fetchConfigs = () => apiRequest<any[]>('/api/configs');
+
+export const updateConfig = (key: string, value: string | number | boolean) =>
+    apiRequest<any>(`/api/configs/${key}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ value }),
+    });
+
+export const rollbackConfig = (key: string) =>
+    apiRequest<any>(`/api/configs/${key}/rollback`, { method: 'POST' });
+
+export const fetchConfigHistory = (key: string) =>
+    apiRequest<any[]>(`/api/configs/${key}/history`);
+
+// ─── Referral Tiers ──────────────────────────────────────────────────
+export const fetchReferralTiers = () =>
+    apiRequest<any[]>('/api/configs/referral-tiers/list');
+
+export const upsertReferralTier = (data: {
+    id?: number;
+    minDeposit: number;
+    maxDeposit: number | null;
+    bonusAmount: number;
+    isActive?: boolean;
+}) => apiRequest<any>('/api/configs/referral-tiers', {
+    method: 'POST',
+    body: JSON.stringify(data),
+});
+
+export const deleteReferralTier = (id: number) =>
+    apiRequest<any>(`/api/configs/referral-tiers/${id}`, { method: 'DELETE' });
+
+// ─── Payment Accounts ────────────────────────────────────────────────
+export const fetchPaymentAccounts = () =>
+    apiRequest<any[]>('/api/configs/payment-accounts/list');
+
+export const upsertPaymentAccount = (data: {
+    id?: number;
+    provider: string;
+    accountNumber: string;
+    accountName?: string;
+    isActive?: boolean;
+    priority?: number;
+    dailyLimit?: number;
+}) => apiRequest<any>('/api/configs/payment-accounts', {
+    method: 'POST',
+    body: JSON.stringify(data),
+});
+
+export const deletePaymentAccount = (id: number) =>
+    apiRequest<any>(`/api/configs/payment-accounts/${id}`, { method: 'DELETE' });
+
+// ─── Admin Management ────────────────────────────────────────────────
+export const fetchAdmins = () => apiRequest<any[]>('/api/admin/admins');
+
+export const addAdmin = (data: {
+    telegramId: string;
+    name: string;
+    email?: string;
+    role: string;
+}) => apiRequest<any>('/api/admin/admins', {
+    method: 'POST',
+    body: JSON.stringify(data),
+});
+
+export const deactivateAdmin = (id: number) =>
+    apiRequest<any>(`/api/admin/admins/${id}/deactivate`, { method: 'PATCH' });
+
+export const activateAdmin = (id: number) =>
+    apiRequest<any>(`/api/admin/admins/${id}/activate`, { method: 'PATCH' });
+
+export const updateAdminRole = (id: number, role: string) =>
+    apiRequest<any>(`/api/admin/admins/${id}/role`, {
+        method: 'PATCH',
+        body: JSON.stringify({ role }),
+    });
+
+
+// ─── Broadcast ───────────────────────────────────────────────────────
+export const sendBroadcast = (data: {
+    message: string;
+    audience: 'all' | 'depositors';
+    buttonType?: 'play' | 'deposit' | 'balance' | 'invite';
+    imageUrl?: string;
+}) => apiRequest<{ success: number; failed: number }>('/api/broadcast', {
+    method: 'POST',
+    body: JSON.stringify(data),
+});

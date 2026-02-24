@@ -9,6 +9,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { Search, Ban, Wallet, ShieldCheck, Phone, Loader2, UserCheck, Gift, RotateCcw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
+// Helper function to calculate total balance
+const getTotalBalance = (user: { withdrawable_balance?: number | null; playing_balance?: number | null }) => {
+  return Number(user.withdrawable_balance || 0) + Number(user.playing_balance || 0);
+};
+
 export default function UsersPage() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -64,8 +69,14 @@ export default function UsersPage() {
   });
 
   const openProfile = async (user: any) => {
-    setSelectedUser(user);
+    setSelectedUser(user); // Show stale data immediately
     setShowProfile(true);
+    try {
+      const fresh = await fetchUser(user.telegram_id);
+      setSelectedUser(fresh); // Update with fresh data
+    } catch {
+      // Fall back to list data already shown
+    }
   };
 
   if (isLoading) {
@@ -101,8 +112,10 @@ export default function UsersPage() {
             <thead>
               <tr className="border-b border-border bg-muted/30">
                 <th className="px-3 md:px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">User</th>
-                <th className="px-3 md:px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">Wallet</th>
-                <th className="px-3 md:px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">Total Deposited</th>
+                <th className="px-3 md:px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">Withdrawable</th>
+                <th className="px-3 md:px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">Playing</th>
+                <th className="px-3 md:px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">Total</th>
+                <th className="px-3 md:px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">Deposited</th>
                 <th className="px-3 md:px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">Games</th>
                 <th className="px-3 md:px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">Status</th>
                 <th className="px-3 md:px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">Actions</th>
@@ -117,8 +130,16 @@ export default function UsersPage() {
                       <p className="text-xs text-muted-foreground">ID: {u.telegram_id}</p>
                     </button>
                   </td>
-                  <td className="px-3 md:px-4 py-3 font-mono text-xs md:text-sm whitespace-nowrap">{Number(u.main_wallet).toLocaleString()} ብር</td>
-                  <td className="px-3 md:px-4 py-3 font-mono text-xs md:text-sm whitespace-nowrap">{Number(u.total_deposited).toLocaleString()} ብር</td>
+                  <td className="px-3 md:px-4 py-3 font-mono text-xs md:text-sm whitespace-nowrap">
+                    <span className="text-success">{Number(u.withdrawable_balance || 0).toLocaleString()} ብር</span>
+                  </td>
+                  <td className="px-3 md:px-4 py-3 font-mono text-xs md:text-sm whitespace-nowrap">
+                    <span className="text-primary">{Number(u.playing_balance || 0).toLocaleString()} ብር</span>
+                  </td>
+                  <td className="px-3 md:px-4 py-3 font-mono text-xs md:text-sm whitespace-nowrap font-semibold">
+                    {getTotalBalance(u).toLocaleString()} ብር
+                  </td>
+                  <td className="px-3 md:px-4 py-3 font-mono text-xs md:text-sm whitespace-nowrap">{Number(u.total_deposited || 0).toLocaleString()} ብር</td>
                   <td className="px-3 md:px-4 py-3 font-mono text-xs whitespace-nowrap">{u.games_played} / {u.games_won}W</td>
                   <td className="px-3 md:px-4 py-3">
                     <div className="flex items-center gap-2">
@@ -146,7 +167,7 @@ export default function UsersPage() {
                 </tr>
               ))}
               {users.length === 0 && (
-                <tr><td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">No users found</td></tr>
+                <tr><td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">No users found</td></tr>
               )}
             </tbody>
           </table>
@@ -173,21 +194,31 @@ export default function UsersPage() {
                   <p className="text-xs text-muted-foreground">Phone</p>
                   <p className="font-mono">{selectedUser.phone || "—"}</p>
                 </div>
-                <div className="rounded-lg bg-muted p-3">
-                  <p className="text-xs text-muted-foreground">Main Wallet</p>
-                  <p className="font-mono font-semibold text-primary">{Number(selectedUser.main_wallet).toLocaleString()} ብር</p>
+                <div className="rounded-lg bg-success/10 p-3 border border-success/20">
+                  <p className="text-xs text-muted-foreground">Withdrawable Balance</p>
+                  <p className="font-mono font-semibold text-success">{Number(selectedUser.withdrawable_balance || 0).toLocaleString()} ብር</p>
+                  <p className="text-[10px] text-muted-foreground mt-0.5">Can withdraw</p>
+                </div>
+                <div className="rounded-lg bg-primary/10 p-3 border border-primary/20">
+                  <p className="text-xs text-muted-foreground">Playing Balance</p>
+                  <p className="font-mono font-semibold text-primary">{Number(selectedUser.playing_balance || 0).toLocaleString()} ብር</p>
+                  <p className="text-[10px] text-muted-foreground mt-0.5">Must play first</p>
                 </div>
                 <div className="rounded-lg bg-muted p-3">
-                  <p className="text-xs text-muted-foreground">Bonus Wallet</p>
-                  <p className="font-mono">{Number(selectedUser.bonus_wallet).toLocaleString()} ብር</p>
+                  <p className="text-xs text-muted-foreground">Total Balance</p>
+                  <p className="font-mono font-semibold">{getTotalBalance(selectedUser).toLocaleString()} ብር</p>
+                </div>
+                <div className="rounded-lg bg-muted p-3">
+                  <p className="text-xs text-muted-foreground">Total Winnings</p>
+                  <p className="font-mono">{Number(selectedUser.total_winnings || 0).toLocaleString()} ብር</p>
                 </div>
                 <div className="rounded-lg bg-muted p-3">
                   <p className="text-xs text-muted-foreground">Total Deposited</p>
-                  <p className="font-mono">{Number(selectedUser.total_deposited).toLocaleString()} ብር</p>
+                  <p className="font-mono">{Number(selectedUser.total_deposited || 0).toLocaleString()} ብር</p>
                 </div>
                 <div className="rounded-lg bg-muted p-3">
                   <p className="text-xs text-muted-foreground">Total Withdrawn</p>
-                  <p className="font-mono">{Number(selectedUser.total_withdrawn).toLocaleString()} ብር</p>
+                  <p className="font-mono">{Number(selectedUser.total_withdrawn || 0).toLocaleString()} ብር</p>
                 </div>
                 <div className="rounded-lg bg-muted p-3">
                   <p className="text-xs text-muted-foreground">Games Played</p>
@@ -247,7 +278,17 @@ export default function UsersPage() {
         <DialogContent className="bg-card border-border">
           <DialogHeader><DialogTitle>Adjust Wallet — {selectedUser?.username}</DialogTitle></DialogHeader>
           <div className="space-y-3">
-            <p className="text-sm text-muted-foreground">Current balance: <span className="font-mono font-semibold">{Number(selectedUser?.main_wallet || 0).toLocaleString()} ብር</span></p>
+            <div className="text-sm space-y-1">
+              <p className="text-muted-foreground">
+                Withdrawable Balance: <span className="font-mono font-semibold text-green-600">{Number(selectedUser?.withdrawable_balance || 0).toLocaleString()} ብር</span>
+              </p>
+              <p className="text-muted-foreground">
+                Playing Balance: <span className="font-mono font-semibold text-blue-600">{Number(selectedUser?.playing_balance || 0).toLocaleString()} ብር</span>
+              </p>
+              <p className="text-xs text-orange-600 mt-2">
+                ℹ️ Adjustment affects withdrawable balance (playing balance unchanged)
+              </p>
+            </div>
             <Input
               type="number"
               placeholder="Amount (positive to add, negative to deduct)"
@@ -268,13 +309,13 @@ export default function UsersPage() {
               onClick={() => {
                 if (!selectedUser) return;
                 const amount = Number(adjustAmount);
-                if (!Number.isFinite(amount)) {
-                  toast({ title: "Invalid amount", description: "Enter a valid number", variant: "destructive" });
+                if (!Number.isFinite(amount) || amount === 0) {
+                  toast({ title: "Invalid amount", description: "Enter a valid non-zero number", variant: "destructive" });
                   return;
                 }
                 adjustMut.mutate({ id: selectedUser.telegram_id, amount, reason: adjustReason.trim() });
               }}
-              disabled={!adjustReason.trim() || adjustMut.isPending || !Number.isFinite(Number(adjustAmount))}
+              disabled={!adjustReason.trim() || adjustMut.isPending || !Number.isFinite(Number(adjustAmount)) || Number(adjustAmount) === 0}
             >
               {adjustMut.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
               Apply Adjustment

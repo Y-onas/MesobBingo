@@ -12,6 +12,9 @@ import UsersPage from "@/pages/UsersPage";
 import FraudAlertsPage from "@/pages/FraudAlertsPage";
 import GameRoomsPage from "@/pages/GameRoomsPage";
 import AuditLogPage from "@/pages/AuditLogPage";
+import SettingsPage from "@/pages/SettingsPage";
+import AdminManagementPage from "@/pages/AdminManagementPage";
+import BroadcastPage from "@/pages/BroadcastPage";
 import LoginPage from "@/pages/LoginPage";
 import NotFound from "./pages/NotFound";
 
@@ -37,9 +40,12 @@ const App = () => (
               <Route path="/deposits" element={<DepositsPage />} />
               <Route path="/withdrawals" element={<WithdrawalsPage />} />
               <Route path="/users" element={<UsersPage />} />
+              <Route path="/broadcast" element={<BroadcastPage />} />
               <Route path="/fraud-alerts" element={<FraudAlertsPage />} />
               <Route path="/game-rooms" element={<GameRoomsPage />} />
               <Route path="/audit-log" element={<AuditLogPage />} />
+              <Route path="/settings" element={<SettingsPage />} />
+              <Route path="/admin-management" element={<AdminManagementPage />} />
             </Route>
             <Route path="*" element={<NotFound />} />
           </Routes>

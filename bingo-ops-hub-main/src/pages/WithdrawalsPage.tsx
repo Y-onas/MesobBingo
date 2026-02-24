@@ -10,7 +10,12 @@ import { cn } from "@/lib/utils";
 import { Eye, Lock, CheckCircle2, XCircle, AlertTriangle, Wallet, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
-const ADMIN_ID = () => localStorage.getItem("mesob_admin_id") || "admin-001";
+// Helper function to calculate total balance
+const getTotalBalance = (user: { user_withdrawable_balance?: number | null; user_playing_balance?: number | null }) => {
+  return Number(user.user_withdrawable_balance || 0) + Number(user.user_playing_balance || 0);
+};
+
+const ADMIN_ID = () => localStorage.getItem("mesob_admin_id") ?? "";
 
 export default function WithdrawalsPage() {
   const queryClient = useQueryClient();
@@ -60,9 +65,9 @@ export default function WithdrawalsPage() {
   });
 
   const canReview = (w: any) => w.status === "pending";
-  const canApproveReject = (w: any) => w.status === "under_review" && w.assigned_admin === ADMIN_ID();
-  const isLocked = (w: any) => w.status === "under_review" && w.assigned_admin && w.assigned_admin !== ADMIN_ID();
-  const insufficientBalance = (w: any) => w.user_wallet < w.amount;
+  const canApproveReject = (w: any) => w.status === "under_review" && String(w.assigned_admin) === String(ADMIN_ID());
+  const isLocked = (w: any) => w.status === "under_review" && w.assigned_admin && String(w.assigned_admin) !== String(ADMIN_ID());
+  const insufficientBalance = (w: any) => Number(w.user_withdrawable_balance || 0) < Number(w.amount);
 
   if (isLoading) {
     return <div className="flex h-64 items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
@@ -125,7 +130,9 @@ export default function WithdrawalsPage() {
                 <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">User</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">Amount</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">Method</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">Wallet</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">Account</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">Holder Name</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">Withdrawable</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">Time</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">Status</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">Actions</th>
@@ -141,11 +148,21 @@ export default function WithdrawalsPage() {
                   </td>
                   <td className="px-4 py-3 font-mono font-semibold">{Number(w.amount).toLocaleString()} ብር</td>
                   <td className="px-4 py-3 text-xs">{w.payment_method}</td>
+                  <td className="px-4 py-3 font-mono text-xs">{w.account_details}</td>
+                  <td className="px-4 py-3">
+                    {w.account_holder_name && w.account_holder_name !== 'Not provided' ? (
+                      <span className="font-medium text-xs">{w.account_holder_name}</span>
+                    ) : (
+                      <span className="text-red-500 text-xs flex items-center gap-1">
+                        <AlertTriangle className="h-3 w-3" /> Missing
+                      </span>
+                    )}
+                  </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-1">
                       <Wallet className="h-3 w-3 text-muted-foreground" />
                       <span className={cn("font-mono text-xs", insufficientBalance(w) ? "text-status-rejected" : "text-status-approved")}>
-                        {Number(w.user_wallet).toLocaleString()} ብር
+                        {Number(w.user_withdrawable_balance || 0).toLocaleString()} ብር
                       </span>
                       {insufficientBalance(w) && <AlertTriangle className="h-3 w-3 text-status-rejected" />}
                     </div>
@@ -186,7 +203,7 @@ export default function WithdrawalsPage() {
                 </tr>
               ))}
               {filtered.length === 0 && (
-                <tr><td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">No withdrawals found</td></tr>
+                <tr><td colSpan={10} className="px-4 py-8 text-center text-muted-foreground">No withdrawals found</td></tr>
               )}
             </tbody>
           </table>
@@ -200,8 +217,10 @@ export default function WithdrawalsPage() {
           {selected && (
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-3 rounded-lg bg-muted p-4 text-sm">
-                <div><span className="text-muted-foreground">Wallet Balance:</span> <span className="font-mono font-semibold">{Number(selected.user_wallet).toLocaleString()} ብር</span></div>
+                <div><span className="text-muted-foreground">Withdrawable Balance:</span> <span className="font-mono font-semibold text-success">{Number(selected.user_withdrawable_balance || 0).toLocaleString()} ብር</span></div>
                 <div><span className="text-muted-foreground">Withdraw Amount:</span> <span className="font-mono font-semibold text-status-rejected">{Number(selected.amount).toLocaleString()} ብር</span></div>
+                <div><span className="text-muted-foreground">Playing Balance:</span> <span className="font-mono text-primary">{Number(selected.user_playing_balance || 0).toLocaleString()} ብር</span></div>
+                <div><span className="text-muted-foreground">Total Balance:</span> <span className="font-mono font-semibold">{getTotalBalance(selected).toLocaleString()} ብር</span></div>
                 <div><span className="text-muted-foreground">Total Deposited:</span> <span className="font-mono">{Number(selected.user_total_deposited).toLocaleString()} ብር</span></div>
                 <div><span className="text-muted-foreground">Total Withdrawn:</span> <span className="font-mono">{Number(selected.user_total_withdrawn).toLocaleString()} ብር</span></div>
                 <div><span className="text-muted-foreground">Games Played:</span> <span className="font-mono">{selected.user_games_played}</span></div>
@@ -227,13 +246,14 @@ export default function WithdrawalsPage() {
       <Dialog open={showRejectDialog} onOpenChange={setShowRejectDialog}>
         <DialogContent className="bg-card border-border">
           <DialogHeader><DialogTitle>Reject Withdrawal</DialogTitle></DialogHeader>
-          <Textarea placeholder="Enter rejection reason..." value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} className="bg-muted border-border" />
+          <p className="text-sm text-muted-foreground mb-2">Rejection reason is optional. Leave blank to use default reason.</p>
+          <Textarea placeholder="Enter rejection reason (optional)..." value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} className="bg-muted border-border" />
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowRejectDialog(false)}>Cancel</Button>
             <Button
               variant="destructive"
-              onClick={() => selected && rejectMut.mutate({ id: selected.id, reason: rejectReason })}
-              disabled={!rejectReason.trim() || rejectMut.isPending}
+              onClick={() => selected && rejectMut.mutate({ id: selected.id, reason: rejectReason.trim() || 'Rejected by admin' })}
+              disabled={rejectMut.isPending}
             >
               Confirm Rejection
             </Button>

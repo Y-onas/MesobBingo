@@ -23,7 +23,7 @@ const handlePlayStart = async (ctx) => {
 
 Choose how much you want to bet:`, {
       parse_mode: 'Markdown',
-      ...stakeKeyboard()
+      ...(await stakeKeyboard())
     });
   } catch (error) {
     console.error('Error in play start:', error);
@@ -37,7 +37,7 @@ const handleStakeSelect = async (ctx) => {
   try {
     const stake = parseInt(ctx.callbackQuery.data.split('_')[2]);
     
-    if (!gameService.isValidStake(stake)) {
+    if (!(await gameService.isValidStake(stake))) {
       return ctx.answerCbQuery('Invalid stake');
     }
     
@@ -233,7 +233,7 @@ const handleBackToStake = async (ctx) => {
 
 Choose how much you want to bet:`, {
       parse_mode: 'Markdown',
-      ...stakeKeyboard()
+      ...(await stakeKeyboard())
     });
   } catch (error) {
     console.error('Error in back to stake:', error);

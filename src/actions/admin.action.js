@@ -4,13 +4,18 @@ const { adminPanelKeyboard } = require('../keyboards/admin.keyboard');
 const { mainKeyboard } = require('../keyboards/main.keyboard');
 const adminService = require('../services/admin.service');
 const depositService = require('../services/deposit.service');
+const configService = require('../services/config.service');
+const { buildBroadcastKeyboard } = require('../utils/broadcast-helper');
+
+// Store bot instance for use in handlers
+let botInstance = null;
 
 /**
  * Handle admin stats
  */
 const handleAdminStats = async (ctx) => {
   try {
-    if (!isAdmin(ctx.from.id)) {
+    if (!await isAdmin(ctx.from.id)) {
       return ctx.answerCbQuery('Unauthorized');
     }
     
@@ -44,7 +49,7 @@ const handleAdminStats = async (ctx) => {
  */
 const handlePendingDeposits = async (ctx) => {
   try {
-    if (!isAdmin(ctx.from.id)) {
+    if (!await isAdmin(ctx.from.id)) {
       return ctx.answerCbQuery('Unauthorized');
     }
     
@@ -84,7 +89,7 @@ Showing most recent deposits...`, { parse_mode: 'Markdown' });
  */
 const handleBroadcastAll = async (ctx) => {
   try {
-    if (!isAdmin(ctx.from.id)) {
+    if (!await isAdmin(ctx.from.id)) {
       return ctx.answerCbQuery('Unauthorized');
     }
     
@@ -97,6 +102,8 @@ const handleBroadcastAll = async (ctx) => {
 
 Reply with the message you want to send to all users.
 
+You can add interactive buttons in the next step.
+
 Type 'cancel' to cancel.`, { parse_mode: 'Markdown' });
   } catch (error) {
     console.error('Error in broadcast all:', error);
@@ -108,7 +115,7 @@ Type 'cancel' to cancel.`, { parse_mode: 'Markdown' });
  */
 const handleBroadcastDepositors = async (ctx) => {
   try {
-    if (!isAdmin(ctx.from.id)) {
+    if (!await isAdmin(ctx.from.id)) {
       return ctx.answerCbQuery('Unauthorized');
     }
     
@@ -120,6 +127,8 @@ const handleBroadcastDepositors = async (ctx) => {
     await ctx.editMessageText(`📢 *Broadcast to Depositors Only*
 
 Reply with the message you want to send to depositors.
+
+You can add interactive buttons in the next step.
 
 Type 'cancel' to cancel.`, { parse_mode: 'Markdown' });
   } catch (error) {
@@ -144,9 +153,112 @@ const handleAdminBack = async (ctx) => {
 };
 
 /**
+ * Handle adding button to broadcast
+ */
+const handleBroadcastAddButton = (buttonType) => async (ctx) => {
+  try {
+    if (!await isAdmin(ctx.from.id)) {
+      return ctx.answerCbQuery('Unauthorized');
+    }
+    
+    ctx.session = ctx.session || {};
+    
+    if (!ctx.session.broadcastMessage) {
+      await ctx.answerCbQuery();
+      return ctx.reply('❌ Broadcast message not found. Please start the broadcast flow again.');
+    }
+    
+    ctx.session.broadcastButton = buttonType;
+    
+    await ctx.answerCbQuery();
+    await ctx.reply('📢 Broadcasting message with button...');
+    
+    // Get bot username from dynamic config and normalize it
+    let botUsername = await configService.get('bot_username');
+    
+    // Normalize: trim whitespace and remove leading '@' if present
+    if (botUsername) {
+      botUsername = botUsername.trim().replace(/^@/, '');
+    }
+    
+    if (!botUsername) {
+      return ctx.reply('❌ Bot username not configured. Please ask an admin to set bot_username in system config.');
+    }
+    
+    const keyboard = buildBroadcastKeyboard(buttonType, botUsername);
+    
+    // Guard against uninitialized bot instance
+    if (!botInstance) {
+      return ctx.reply('❌ Bot not initialized. Please try again in a moment.');
+    }
+    
+    const result = await adminService.broadcastMessage(
+      botInstance,
+      ctx.session.broadcastMessage,
+      ctx.session.broadcastType === 'depositors',
+      keyboard
+    );
+    
+    ctx.session.broadcastMessage = null;
+    ctx.session.broadcastButton = null;
+    
+    await ctx.reply(`✅ *Broadcast Complete*
+
+✅ Sent: ${result.success}
+❌ Failed: ${result.failed}`, { parse_mode: 'Markdown' });
+  } catch (error) {
+    console.error('Error in broadcast add button:', error);
+    await ctx.reply('❌ An error occurred while broadcasting. Please try again.');
+  }
+};
+
+/**
+ * Handle sending broadcast without buttons
+ */
+const handleBroadcastSendPlain = async (ctx) => {
+  try {
+    if (!await isAdmin(ctx.from.id)) {
+      return ctx.answerCbQuery('Unauthorized');
+    }
+    
+    await ctx.answerCbQuery();
+    
+    if (!ctx.session?.broadcastMessage) {
+      return ctx.reply('❌ Broadcast message not found. Please start the broadcast flow again.');
+    }
+    
+    await ctx.reply('📢 Broadcasting message...');
+    
+    // Guard against uninitialized bot instance
+    if (!botInstance) {
+      return ctx.reply('❌ Bot not initialized. Please try again in a moment.');
+    }
+    
+    const result = await adminService.broadcastMessage(
+      botInstance,
+      ctx.session.broadcastMessage,
+      ctx.session.broadcastType === 'depositors'
+    );
+    
+    ctx.session.broadcastMessage = null;
+    
+    await ctx.reply(`✅ *Broadcast Complete*
+
+✅ Sent: ${result.success}
+❌ Failed: ${result.failed}`, { parse_mode: 'Markdown' });
+  } catch (error) {
+    console.error('Error in broadcast send plain:', error);
+    await ctx.reply('❌ An error occurred while broadcasting. Please try again.');
+  }
+};
+
+/**
  * Register admin actions
  */
 const register = (bot) => {
+  // Store bot instance for handlers
+  botInstance = bot;
+  
   bot.action('admin_stats', handleAdminStats);
   bot.action('admin_pending_deposits', handlePendingDeposits);
   bot.action('broadcast_all', handleBroadcastAll);
@@ -154,20 +266,27 @@ const register = (bot) => {
   bot.action('admin_back', handleAdminBack);
   bot.action('admin_users', handleAdminStats); // Reuse stats for now
   bot.action('admin_pending_withdrawals', async (ctx) => {
-    if (!isAdmin(ctx.from.id)) return ctx.answerCbQuery('Unauthorized');
+    if (!await isAdmin(ctx.from.id)) return ctx.answerCbQuery('Unauthorized');
     await ctx.answerCbQuery('Coming soon...');
   });
   bot.action('admin_broadcast', async (ctx) => {
-    if (!isAdmin(ctx.from.id)) return ctx.answerCbQuery('Unauthorized');
+    if (!await isAdmin(ctx.from.id)) return ctx.answerCbQuery('Unauthorized');
     const { broadcastTypeKeyboard } = require('../keyboards/admin.keyboard');
     await ctx.answerCbQuery();
     await ctx.editMessageText('📢 Select broadcast type:', broadcastTypeKeyboard());
   });
   bot.action('admin_add_bonus', async (ctx) => {
-    if (!isAdmin(ctx.from.id)) return ctx.answerCbQuery('Unauthorized');
+    if (!await isAdmin(ctx.from.id)) return ctx.answerCbQuery('Unauthorized');
     await ctx.answerCbQuery();
     await ctx.reply('Use /bonus [userId] [amount] to add bonus.');
   });
+  
+  // Broadcast action buttons
+  bot.action('broadcast_add_play', handleBroadcastAddButton('play'));
+  bot.action('broadcast_add_deposit', handleBroadcastAddButton('deposit'));
+  bot.action('broadcast_add_balance', handleBroadcastAddButton('balance'));
+  bot.action('broadcast_add_invite', handleBroadcastAddButton('invite'));
+  bot.action('broadcast_send_plain', handleBroadcastSendPlain);
 };
 
 module.exports = { register };

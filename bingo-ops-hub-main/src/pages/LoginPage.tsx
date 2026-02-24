@@ -41,8 +41,9 @@ export default function LoginPage() {
 
       if (response.ok && data.isAdmin && data.token) {
         // Store JWT token and admin info in localStorage
+        // IMPORTANT: Store telegramId from response (number) as string to match JWT token
         localStorage.setItem("mesob_admin_token", data.token);
-        localStorage.setItem("mesob_admin_id", telegramId);
+        localStorage.setItem("mesob_admin_id", String(data.telegramId));
         localStorage.setItem("mesob_admin_name", data.name || "Admin");
         localStorage.setItem("mesob_admin_authenticated", "true");
         

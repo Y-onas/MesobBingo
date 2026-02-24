@@ -91,11 +91,14 @@ export interface BingoRoom {
   created_at: string;
 }
 
-export type AdminRole = "super_admin" | "finance_admin" | "support_admin";
+export type AdminRole = "super_admin" | "admin" | "finance_admin" | "support_admin";
 
 export interface Admin {
-  id: string;
+  id: number;
+  telegramId: number;
   name: string;
+  email: string | null;
   role: AdminRole;
-  email: string;
+  isActive: boolean;
+  createdAt: string;
 }

@@ -47,7 +47,7 @@ const GamePlayScreen = ({
   voiceEnabled,
   onVoiceToggle,
 }: GamePlayScreenProps) => {
-  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isRefreshing] = useState(false);
   
   const calledNumbers = game.calledNumbers || [];
   const calledSet = new Set(calledNumbers);
@@ -81,9 +81,7 @@ const GamePlayScreen = ({
   }, [voiceEnabled, speechSupported, onVoiceToggle]);
 
   const handleRefresh = () => {
-    setIsRefreshing(true);
-    onRefreshBalance();
-    setTimeout(() => setIsRefreshing(false), 300);
+    window.location.reload();
   };
 
   // Get recently called letters

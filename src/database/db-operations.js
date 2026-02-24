@@ -5,6 +5,69 @@ const { db, pool } = require('./index');
 const logger = require('../utils/logger');
 
 /**
+ * Global DB health state
+ * When false, blocks all critical game operations to prevent corruption
+ */
+let dbHealthy = true;
+let lastHealthCheck = Date.now();
+let recoveryTimer = null;
+const HEALTH_CHECK_INTERVAL = 5000; // Check every 5s
+
+/**
+ * Mark database as unhealthy and schedule recovery check
+ */
+function markDbUnhealthy() {
+  if (dbHealthy) {
+    logger.error('🔴 DATABASE MARKED UNHEALTHY - Blocking critical operations');
+    dbHealthy = false;
+  }
+  
+  // Don't schedule if a recovery check is already pending
+  if (recoveryTimer) return;
+  
+  // Schedule recovery check
+  recoveryTimer = setTimeout(async () => {
+    recoveryTimer = null;
+    try {
+      await pool.query('SELECT 1');
+      dbHealthy = true;
+      logger.info('🟢 DATABASE RECOVERED - Resuming operations');
+    } catch (error) {
+      logger.warn('Database still unhealthy, will retry...');
+      markDbUnhealthy(); // Retry
+    }
+  }, 10000).unref(); // Don't block process exit
+}
+
+/**
+ * Check if database is healthy
+ */
+function isDbHealthy() {
+  return dbHealthy;
+}
+
+/**
+ * Periodic health check
+ */
+async function periodicHealthCheck() {
+  if (Date.now() - lastHealthCheck < HEALTH_CHECK_INTERVAL) {
+    return;
+  }
+  
+  lastHealthCheck = Date.now();
+  
+  try {
+    await pool.query('SELECT 1');
+    if (!dbHealthy) {
+      dbHealthy = true;
+      logger.info('🟢 DATABASE RECOVERED - Resuming operations');
+    }
+  } catch (error) {
+    markDbUnhealthy();
+  }
+}
+
+/**
  * Circuit Breaker for database operations
  * Prevents cascading failures by temporarily blocking requests after repeated failures
  */
@@ -24,6 +87,8 @@ class CircuitBreaker {
         if (fallback) return fallback();
         throw new Error('Circuit breaker is OPEN');
       }
+      // Reset failure count when entering HALF_OPEN to allow one clean probe
+      this.failureCount = 0;
       this.state = 'HALF_OPEN';
     }
 
@@ -51,6 +116,7 @@ class CircuitBreaker {
       this.state = 'OPEN';
       this.nextAttempt = Date.now() + this.timeout;
       logger.error(`Circuit breaker OPEN - too many failures (${this.failureCount})`);
+      markDbUnhealthy(); // Mark DB as unhealthy globally
     }
   }
 
@@ -114,18 +180,33 @@ async function executeDbOperation(operation, options = {}) {
       }
     }
 
-    if (critical) {
-      throw lastError;
-    }
-    
-    return fallback ? fallback() : null;
+    // Always throw so circuit breaker can track failures
+    // The caller will handle critical vs non-critical behavior
+    throw lastError;
   };
 
   if (useCircuitBreaker) {
-    return circuitBreaker.execute(executeWithRetry, fallback);
+    try {
+      return await circuitBreaker.execute(executeWithRetry);
+    } catch (error) {
+      // Circuit breaker has tracked the failure
+      // Now handle critical vs non-critical behavior
+      if (critical) {
+        throw error;
+      }
+      return fallback ? fallback() : null;
+    }
   }
   
-  return executeWithRetry();
+  // Without circuit breaker, handle errors directly
+  try {
+    return await executeWithRetry();
+  } catch (error) {
+    if (critical) {
+      throw error;
+    }
+    return fallback ? fallback() : null;
+  }
 }
 
 /**
@@ -179,6 +260,20 @@ async function safeQuery(queryFn, options = {}) {
 
 /**
  * Safe database transaction
+ * 
+ * IMPORTANT: Transaction retries can cause duplicate writes for non-idempotent operations.
+ * If a failure occurs during/after COMMIT (e.g., network timeout where server committed 
+ * but client didn't receive acknowledgment), the retry will execute the entire transaction 
+ * again, potentially causing duplicate writes.
+ * 
+ * RECOMMENDATIONS:
+ * - Ensure transaction logic is idempotent (safe to execute multiple times)
+ * - Use unique constraints or conditional logic to prevent duplicates
+ * - For critical non-idempotent operations, consider maxRetries: 1 (no retry)
+ * 
+ * @param {Function} transactionFn - Function that receives a pg client and executes queries
+ * @param {Object} options - Configuration options
+ * @returns {Promise<any>}
  */
 async function safeTransaction(transactionFn, options = {}) {
   return executeDbOperation(
@@ -190,7 +285,16 @@ async function safeTransaction(transactionFn, options = {}) {
         await client.query('COMMIT');
         return result;
       } catch (error) {
-        await client.query('ROLLBACK');
+        // Guard ROLLBACK to preserve original error
+        try {
+          await client.query('ROLLBACK');
+        } catch (rollbackError) {
+          logger.error('ROLLBACK failed (connection may be broken):', {
+            rollbackError: rollbackError.message,
+            originalError: error.message
+          });
+          // Continue to throw original error, not rollback error
+        }
         throw error;
       } finally {
         client.release();
@@ -198,7 +302,7 @@ async function safeTransaction(transactionFn, options = {}) {
     },
     {
       operationName: options.name || 'database transaction',
-      maxRetries: 2, // Fewer retries for transactions
+      maxRetries: 1, // Reduced to 1 to minimize duplicate write risk
       ...options
     }
   );
@@ -209,5 +313,8 @@ module.exports = {
   safeQuery,
   safeTransaction,
   isRetryableError,
-  circuitBreaker
+  circuitBreaker,
+  isDbHealthy,
+  markDbUnhealthy,
+  periodicHealthCheck
 };
