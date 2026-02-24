@@ -1,5 +1,6 @@
 const { Markup } = require('telegraf');
 const { EMOJI } = require('./constants');
+const logger = require('./logger');
 
 /**
  * Build a broadcast keyboard based on button type
@@ -32,8 +33,8 @@ const buildBroadcastKeyboard = (buttonType, botUsername) => {
       buttonUrl = `https://t.me/${botUsername}?start=invite`;
       break;
     default:
-      buttonText = 'Open Bot';
-      buttonUrl = `https://t.me/${botUsername}`;
+      logger.warn(`Unknown broadcast buttonType: ${buttonType}`);
+      return undefined;
   }
 
   return Markup.inlineKeyboard([

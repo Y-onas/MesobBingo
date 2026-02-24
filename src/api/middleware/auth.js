@@ -1,7 +1,7 @@
 const jwt = require('jsonwebtoken');
 const { ADMIN_API_KEY, JWT_SECRET } = require('../../config/env');
 const logger = require('../../utils/logger');
-const { isAdmin } = require('../../config/admin');
+const { getAdminRole } = require('../../config/admin');
 
 /**
  * JWT-based authentication middleware (preferred)
@@ -19,16 +19,17 @@ const jwtAuthMiddleware = async (req, res, next) => {
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
     
-    // Revalidate admin status from database (ensures revocation takes immediate effect)
-    const adminActive = await isAdmin(decoded.telegramId);
-    if (!adminActive) {
+    // Fetch current role from database (ensures role changes take immediate effect)
+    // getAdminRole returns null for inactive/non-existent admins
+    const currentRole = await getAdminRole(decoded.telegramId);
+    if (!currentRole) {
       return res.status(401).json({ error: 'Unauthorized — admin access revoked', revoked: true });
     }
     
-    // Attach admin info from token
+    // Attach admin info with current role from DB
     req.adminId = decoded.telegramId;
     req.adminName = decoded.name || `Admin ${decoded.telegramId}`;
-    req.adminRole = decoded.role;
+    req.adminRole = currentRole;
     req.adminIp = req.ip || req.connection?.remoteAddress || '0.0.0.0';
     
     next();

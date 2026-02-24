@@ -1,5 +1,5 @@
 const { SESSION_STATES, CURRENCY, EMOJI } = require('../utils/constants');
-const { mainKeyboard } = require('../keyboards/main.keyboard');
+const { mainKeyboard, cancelKeyboard } = require('../keyboards/main.keyboard');
 const { withdrawBankKeyboard, withdrawConfirmKeyboard } = require('../keyboards/withdraw.keyboard');
 const { parseAmount, isValidPhone } = require('../utils/helpers');
 const configService = require('../services/config.service');
@@ -7,9 +7,9 @@ const depositService = require('../services/deposit.service');
 const withdrawService = require('../services/withdraw.service');
 const adminService = require('../services/admin.service');
 const userService = require('../services/user.service');
-const { isAdmin } = require('../config/admin');
+const { isAdmin, getActiveAdmins } = require('../config/admin');
 const { depositConfirmKeyboard } = require('../keyboards/deposit.keyboard');
-const { adminPanelKeyboard } = require('../keyboards/admin.keyboard');
+const { adminPanelKeyboard, broadcastActionsKeyboard } = require('../keyboards/admin.keyboard');
 const logger = require('../utils/logger');
 const { depositCommand } = require('../commands/user/deposit.command');
 const { withdrawCommand } = require('../commands/user/withdraw.command');
@@ -106,7 +106,7 @@ const textHandler = async (ctx) => {
         break;
     }
   } catch (error) {
-    console.error('Error in text handler:', error);
+    logger.error('Error in text handler:', error);
   }
 };
 
@@ -115,15 +115,16 @@ const textHandler = async (ctx) => {
  */
 const handleWithdrawAmount = async (ctx, text) => {
   const amount = parseAmount(text);
-  const MIN_WITHDRAW = Number(await configService.get('min_withdraw', 150));
+  const MIN_WITHDRAW = Number(await configService.get('min_withdraw', 150)) || 150;
   
   if (!amount || amount < MIN_WITHDRAW) {
     return ctx.reply(`❌ Invalid amount. Minimum withdrawal is ${MIN_WITHDRAW} ${CURRENCY}.`);
   }
   
   const user = await userService.getUser(ctx.from.id);
-  if (!user || Number(user.withdrawableBalance) < amount) {
-    return ctx.reply(`❌ Insufficient withdrawable balance. Your withdrawable balance: ${Number(user?.withdrawableBalance || 0).toFixed(2)} ${CURRENCY}`);
+  const withdrawable = Number(user?.withdrawableBalance) || 0;
+  if (!user || withdrawable < amount) {
+    return ctx.reply(`❌ Insufficient withdrawable balance. Your withdrawable balance: ${withdrawable.toFixed(2)} ${CURRENCY}`);
   }
   
   ctx.session.withdrawAmount = amount;
@@ -148,8 +149,6 @@ const handleWithdrawPhone = async (ctx, text) => {
   
   ctx.session.accountNumber = accountNumber;
   ctx.session.state = SESSION_STATES.AWAITING_WITHDRAW_ACCOUNT_NAME;
-  
-  const { cancelKeyboard } = require('../keyboards/main.keyboard');
   
   await ctx.reply(`👤 *Account Holder Name*
 
@@ -214,7 +213,7 @@ const handleDepositSMS = async (ctx, text) => {
   const amountStr = amountMatch ? (amountMatch[1] || amountMatch[2] || amountMatch[3] || amountMatch[4]) : null;
   const amount = amountStr ? parseFloat(amountStr.replace(/,/g, '')) : null;
   
-  const MIN_DEPOSIT = Number(await configService.get('min_deposit', 50));
+  const MIN_DEPOSIT = Number(await configService.get('min_deposit', 50)) || 50;
 
   if (!amount || amount < MIN_DEPOSIT) {
     return ctx.reply(`❌ Could not parse deposit amount from SMS. 
@@ -253,7 +252,6 @@ Your deposit will be reviewed shortly.`, {
   });
   
   // Notify admins with SMS text
-  const { getActiveAdmins } = require('../config/admin');
   const activeAdmins = await getActiveAdmins();
   for (const admin of activeAdmins) {
     try {
@@ -288,8 +286,6 @@ const handleBroadcastMessage = async (ctx, text) => {
   
   // Store the message for later use
   ctx.session.broadcastMessage = text;
-  
-  const { broadcastActionsKeyboard } = require('../keyboards/admin.keyboard');
   
   await ctx.reply(`✅ *Message Received*
 

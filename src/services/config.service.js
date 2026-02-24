@@ -327,9 +327,15 @@ class ConfigService extends EventEmitter {
    * Get all referral tiers
    */
   async getReferralTiers() {
-    return db.select()
-      .from(referralTiers)
-      .orderBy(asc(referralTiers.minDeposit));
+    try {
+      const result = await db.select()
+        .from(referralTiers)
+        .orderBy(asc(referralTiers.minDeposit));
+      return result ?? [];
+    } catch (error) {
+      logger.error('Error fetching referral tiers:', error);
+      return [];
+    }
   }
 
   /**

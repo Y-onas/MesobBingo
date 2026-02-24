@@ -68,10 +68,11 @@ CREATE INDEX IF NOT EXISTS idx_payment_accounts_active
 -- Payment Limits
 INSERT INTO system_config (config_key, config_value, value_type, category, description) VALUES
   ('min_deposit', '50', 'number', 'payment', 'Minimum deposit amount in Birr'),
-  ('min_withdraw', '150', 'number', 'payment', 'Minimum withdrawal amount in Birr'),
-  ('telebirr_number', '0900000000', 'string', 'payment', 'Primary Telebirr account number'),
-  ('cbe_account', '1000000000000', 'string', 'payment', 'Primary CBE account number')
+  ('min_withdraw', '150', 'number', 'payment', 'Minimum withdrawal amount in Birr')
 ON CONFLICT (config_key) DO NOTHING;
+
+-- Note: Payment account numbers (telebirr_number, cbe_account) are managed via payment_accounts table
+-- Use configService.getActiveAccount(provider) to retrieve account details
 
 -- Bonuses
 INSERT INTO system_config (config_key, config_value, value_type, category, description) VALUES

@@ -9,7 +9,7 @@ import { useToast } from "@/hooks/use-toast";
 import {
   Settings, Shield, CreditCard, Gamepad2, TrendingUp, Gift,
   ToggleLeft, ToggleRight, History, RotateCcw, Plus, Trash2,
-  Edit2, Check, X, AlertTriangle, MessageSquare, Info, Eye,
+  Edit2, Edit, Check, X, AlertTriangle, MessageSquare, Info, Eye,
   ChevronDown, ChevronRight, Save,
 } from "lucide-react";
 
@@ -168,9 +168,17 @@ export default function SettingsPage() {
   };
 
   // ─── Payment Account Actions ───────────────────────────────────────
-  const [accForm, setAccForm] = useState({ provider: "telebirr", accountNumber: "", accountName: "" });
+  const [accForm, setAccForm] = useState({ 
+    id: undefined as number | undefined, 
+    provider: "telebirr", 
+    accountNumber: "", 
+    accountName: "",
+    isActive: true,
+    priority: 1
+  });
+  const [isEditingAccount, setIsEditingAccount] = useState(false);
 
-  const handleAddAccount = async () => {
+  const handleAddOrUpdateAccount = async () => {
     // Add validation
     if (!accForm.accountNumber || !accForm.accountName) {
       toast({ 
@@ -181,18 +189,55 @@ export default function SettingsPage() {
       return;
     }
     
+    // Check for duplicate priority within same provider
+    const duplicatePriority = accounts.find((acc: any) => 
+      acc.provider === accForm.provider && 
+      acc.priority === accForm.priority && 
+      acc.id !== accForm.id // Exclude current account when editing
+    );
+    
+    if (duplicatePriority) {
+      toast({ 
+        title: "Validation Error", 
+        description: `Another ${accForm.provider} account already has priority ${accForm.priority}. Each account must have a unique priority.`,
+        variant: "destructive" 
+      });
+      return;
+    }
+    
     try {
       await upsertPaymentAccount({
+        id: accForm.id,
         provider: accForm.provider,
         accountNumber: accForm.accountNumber,
         accountName: accForm.accountName,
+        isActive: accForm.isActive,
+        priority: accForm.priority,
       });
       queryClient.invalidateQueries({ queryKey: ["paymentAccounts"] });
-      setAccForm({ provider: "telebirr", accountNumber: "", accountName: "" });
-      toast({ title: "Account added" });
+      setAccForm({ id: undefined, provider: "telebirr", accountNumber: "", accountName: "", isActive: true, priority: 1 });
+      setIsEditingAccount(false);
+      toast({ title: isEditingAccount ? "Account updated" : "Account added" });
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
     }
+  };
+
+  const handleEditAccount = (acc: any) => {
+    setAccForm({
+      id: acc.id,
+      provider: acc.provider,
+      accountNumber: acc.accountNumber,
+      accountName: acc.accountName || "",
+      isActive: acc.isActive ?? true,
+      priority: acc.priority ?? 1,
+    });
+    setIsEditingAccount(true);
+  };
+
+  const handleCancelEditAccount = () => {
+    setAccForm({ id: undefined, provider: "telebirr", accountNumber: "", accountName: "", isActive: true, priority: 1 });
+    setIsEditingAccount(false);
   };
 
   const handleDeleteAccount = async (id: number) => {
@@ -615,45 +660,96 @@ export default function SettingsPage() {
             <h3 className="text-sm font-semibold flex items-center gap-2">
               <CreditCard className="h-4 w-4 text-blue-500" /> Payment Accounts
             </h3>
+            <p className="text-xs text-muted-foreground mt-1">
+              The system uses the <strong>active</strong> account with the <strong>highest priority</strong> for each provider. Set priority to control which account is used.
+            </p>
           </div>
           <div className="p-4 space-y-4">
-            {/* Add form */}
-            <div className="flex items-end gap-3 flex-wrap">
-              <div>
-                <label className="text-xs text-muted-foreground">Provider</label>
-                <select
-                  value={accForm.provider}
-                  onChange={(e) => setAccForm({ ...accForm, provider: e.target.value })}
-                  className="px-2 py-1 text-sm border border-border rounded bg-background block mt-1"
-                >
-                  <option value="telebirr">Telebirr</option>
-                  <option value="cbe">CBE</option>
-                </select>
+            {/* Add/Edit form */}
+            <div className="space-y-3">
+              {isEditingAccount && (
+                <div className="text-sm text-blue-600 font-medium">
+                  Editing Account #{accForm.id}
+                </div>
+              )}
+              <div className="flex items-end gap-3 flex-wrap">
+                <div>
+                  <label className="text-xs text-muted-foreground">Provider</label>
+                  <select
+                    value={accForm.provider}
+                    onChange={(e) => setAccForm({ ...accForm, provider: e.target.value })}
+                    className="px-2 py-1 text-sm border border-border rounded bg-background block mt-1"
+                    disabled={isEditingAccount}
+                  >
+                    <option value="telebirr">Telebirr</option>
+                    <option value="cbe">CBE</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs text-muted-foreground">Account Number</label>
+                  <input
+                    value={accForm.accountNumber}
+                    onChange={(e) => setAccForm({ ...accForm, accountNumber: e.target.value })}
+                    className="w-40 px-2 py-1 text-sm border border-border rounded bg-background block mt-1"
+                    placeholder="0900000000"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-muted-foreground">Account Name</label>
+                  <input
+                    value={accForm.accountName}
+                    onChange={(e) => setAccForm({ ...accForm, accountName: e.target.value })}
+                    className="w-40 px-2 py-1 text-sm border border-border rounded bg-background block mt-1"
+                    placeholder="Company Name"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-muted-foreground">Priority (Higher = Preferred)</label>
+                  <input
+                    type="number"
+                    value={accForm.priority}
+                    onChange={(e) => setAccForm({ ...accForm, priority: parseInt(e.target.value) || 0 })}
+                    className="w-24 px-2 py-1 text-sm border border-border rounded bg-background block mt-1"
+                    placeholder="1"
+                    min="0"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-muted-foreground">Status</label>
+                  <select
+                    value={accForm.isActive ? "active" : "inactive"}
+                    onChange={(e) => setAccForm({ ...accForm, isActive: e.target.value === "active" })}
+                    className="px-2 py-1 text-sm border border-border rounded bg-background block mt-1"
+                  >
+                    <option value="active">Active</option>
+                    <option value="inactive">Inactive</option>
+                  </select>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleAddOrUpdateAccount}
+                    className="flex items-center gap-1 px-3 py-1.5 text-sm bg-primary text-primary-foreground rounded hover:bg-primary/90"
+                  >
+                    {isEditingAccount ? (
+                      <>
+                        <Save className="h-3 w-3" /> Update
+                      </>
+                    ) : (
+                      <>
+                        <Plus className="h-3 w-3" /> Add
+                      </>
+                    )}
+                  </button>
+                  {isEditingAccount && (
+                    <button
+                      onClick={handleCancelEditAccount}
+                      className="flex items-center gap-1 px-3 py-1.5 text-sm bg-muted text-muted-foreground rounded hover:bg-muted/80"
+                    >
+                      <X className="h-3 w-3" /> Cancel
+                    </button>
+                  )}
+                </div>
               </div>
-              <div>
-                <label className="text-xs text-muted-foreground">Account Number</label>
-                <input
-                  value={accForm.accountNumber}
-                  onChange={(e) => setAccForm({ ...accForm, accountNumber: e.target.value })}
-                  className="w-40 px-2 py-1 text-sm border border-border rounded bg-background block mt-1"
-                  placeholder="0900000000"
-                />
-              </div>
-              <div>
-                <label className="text-xs text-muted-foreground">Account Name</label>
-                <input
-                  value={accForm.accountName}
-                  onChange={(e) => setAccForm({ ...accForm, accountName: e.target.value })}
-                  className="w-40 px-2 py-1 text-sm border border-border rounded bg-background block mt-1"
-                  placeholder="Company Name (Required)"
-                />
-              </div>
-              <button
-                onClick={handleAddAccount}
-                className="flex items-center gap-1 px-3 py-1.5 text-sm bg-primary text-primary-foreground rounded hover:bg-primary/90"
-              >
-                <Plus className="h-3 w-3" /> Add
-              </button>
             </div>
 
             {/* Table */}
@@ -683,9 +779,22 @@ export default function SettingsPage() {
                     </td>
                     <td className="py-2">{acc.priority}</td>
                     <td className="py-2 text-right">
-                      <button onClick={() => handleDeleteAccount(acc.id)} className="text-red-500 hover:text-red-400">
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
+                      <div className="flex items-center justify-end gap-2">
+                        <button 
+                          onClick={() => handleEditAccount(acc)} 
+                          className="text-blue-500 hover:text-blue-400"
+                          title="Edit account"
+                        >
+                          <Edit className="h-3.5 w-3.5" />
+                        </button>
+                        <button 
+                          onClick={() => handleDeleteAccount(acc.id)} 
+                          className="text-red-500 hover:text-red-400"
+                          title="Delete account"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}

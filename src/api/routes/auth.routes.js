@@ -92,11 +92,14 @@ router.post('/verify', async (req, res) => {
         return res.status(401).json({ error: 'Admin access revoked', revoked: true });
       }
       
+      // Fetch current role from database (not stale JWT role)
+      const currentRole = await getAdminRole(decoded.telegramId);
+      
       res.json({
         valid: true,
         telegramId: decoded.telegramId,
         name: decoded.name,
-        role: decoded.role
+        role: currentRole
       });
     } catch (err) {
       if (err.name === 'TokenExpiredError') {

@@ -175,14 +175,14 @@ const handleBroadcastAddButton = (buttonType) => async (ctx) => {
     const { buildBroadcastKeyboard } = require('../utils/broadcast-helper');
     
     // Get bot username from dynamic config and normalize it
-    let botUsername = await configService.get('bot_username', 'your_bot_username');
+    let botUsername = await configService.get('bot_username');
     
     // Normalize: trim whitespace and remove leading '@' if present
     if (botUsername) {
       botUsername = botUsername.trim().replace(/^@/, '');
     }
     
-    if (!botUsername || botUsername === 'your_bot_username') {
+    if (!botUsername) {
       return ctx.reply('❌ Bot username not configured. Please ask an admin to set bot_username in system config.');
     }
     

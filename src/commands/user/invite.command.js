@@ -15,24 +15,31 @@ const inviteCommand = async (ctx) => {
     }
     
     // Get bot username from dynamic config and normalize it
-    let botUsername = await configService.get('bot_username', 'your_bot_username');
+    let botUsername = await configService.get('bot_username');
     
     // Normalize: trim whitespace and remove leading '@' if present
     if (botUsername) {
       botUsername = botUsername.trim().replace(/^@/, '');
     }
     
+    // Validate bot username is configured
+    if (!botUsername) {
+      await ctx.reply('❌ Bot username is not configured. Please contact support.');
+      return;
+    }
+    
     const referralLink = `https://t.me/${botUsername}?start=ref_${ctx.from.id}`;
     
     // Get dynamic referral tiers from DB
-    const tiers = await configService.getReferralTiers();
+    const tiers = (await configService.getReferralTiers()) ?? [];
     const minDeposit = await configService.get('min_deposit', 50);
 
     let tierText = '';
-    if (tiers.length > 0) {
+    if (Array.isArray(tiers) && tiers.length > 0) {
       tierText = tiers.map(t => {
         const min = Number(t.minDeposit).toFixed(0);
-        const max = t.maxDeposit ? Number(t.maxDeposit).toFixed(0) : '+';
+        const hasMax = t.maxDeposit !== null && t.maxDeposit !== undefined;
+        const max = hasMax ? Number(t.maxDeposit).toFixed(0) : '+';
         const bonus = Number(t.bonusAmount).toFixed(0);
         return `   💎 ${min}-${max} ${CURRENCY} → *${bonus} ${CURRENCY}* ቦነስ`;
       }).join('\n');

@@ -22,7 +22,7 @@ const createWithdrawal = async (telegramId, amount, method, accountNumber, accou
     throw new Error('Withdrawals are temporarily disabled');
   }
 
-  const MIN_WITHDRAW = Number(await configService.get('min_withdraw', 150));
+  const MIN_WITHDRAW = Number(await configService.get('min_withdraw', 150)) || 150;
   if (amount < MIN_WITHDRAW) {
     throw new Error(`Minimum withdrawal is ${MIN_WITHDRAW} ብር`);
   }
@@ -43,8 +43,8 @@ const createWithdrawal = async (telegramId, amount, method, accountNumber, accou
     }
 
     // NEW: Check withdrawable balance (winnings only)
-    const withdrawableBalance = Number(user.withdrawable_balance);
-    const playingBalance = Number(user.playing_balance);
+    const withdrawableBalance = Number(user.withdrawable_balance) || 0;
+    const playingBalance = Number(user.playing_balance) || 0;
     
     if (withdrawableBalance < amount) {
       await client.query('ROLLBACK');

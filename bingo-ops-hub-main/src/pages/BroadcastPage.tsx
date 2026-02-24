@@ -238,21 +238,32 @@ export default function BroadcastPage() {
         </div>
 
         {/* Result */}
-        {result && (
-          <div className="mt-6 p-4 bg-green-50 border border-green-200 rounded-lg">
-            <h3 className="font-semibold text-green-900 mb-2">Broadcast Complete!</h3>
-            <div className="grid grid-cols-2 gap-4 text-sm">
-              <div>
-                <span className="text-green-700">✅ Sent Successfully:</span>
-                <span className="font-bold text-green-900 ml-2">{result.success}</span>
-              </div>
-              <div>
-                <span className="text-red-700">❌ Failed:</span>
-                <span className="font-bold text-red-900 ml-2">{result.failed}</span>
+        {result && (() => {
+          const allSuccess = result.failed === 0;
+          const allFailed = result.success === 0 && result.failed > 0;
+          const mixed = result.success > 0 && result.failed > 0;
+          
+          const bgColor = allSuccess ? 'bg-green-50' : allFailed ? 'bg-red-50' : 'bg-yellow-50';
+          const borderColor = allSuccess ? 'border-green-200' : allFailed ? 'border-red-200' : 'border-yellow-200';
+          const titleColor = allSuccess ? 'text-green-900' : allFailed ? 'text-red-900' : 'text-yellow-900';
+          const title = allSuccess ? 'Broadcast Complete!' : allFailed ? 'Broadcast Failed' : 'Broadcast Partially Complete';
+          
+          return (
+            <div className={`mt-6 p-4 ${bgColor} border ${borderColor} rounded-lg`}>
+              <h3 className={`font-semibold ${titleColor} mb-2`}>{title}</h3>
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <span className="text-green-700">✅ Sent Successfully:</span>
+                  <span className="font-bold text-green-900 ml-2">{result.success}</span>
+                </div>
+                <div>
+                  <span className="text-red-700">❌ Failed:</span>
+                  <span className="font-bold text-red-900 ml-2">{result.failed}</span>
+                </div>
               </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
       </div>
 
       {/* Tips */}

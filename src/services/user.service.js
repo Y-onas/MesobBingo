@@ -104,7 +104,7 @@ const updatePlayingBalance = async (telegramId, amount) => {
  */
 const getWithdrawableBalance = async (telegramId) => {
   const user = await getUser(telegramId);
-  return user ? Number(user.withdrawableBalance) : 0;
+  return user ? (Number(user.withdrawableBalance) || 0) : 0;
 };
 
 /**
@@ -112,7 +112,7 @@ const getWithdrawableBalance = async (telegramId) => {
  */
 const getPlayingBalance = async (telegramId) => {
   const user = await getUser(telegramId);
-  return user ? Number(user.playingBalance) : 0;
+  return user ? (Number(user.playingBalance) || 0) : 0;
 };
 
 /**
@@ -121,7 +121,7 @@ const getPlayingBalance = async (telegramId) => {
 const getTotalBalance = async (telegramId) => {
   const user = await getUser(telegramId);
   if (!user) return 0;
-  return Number(user.withdrawableBalance) + Number(user.playingBalance);
+  return (Number(user.withdrawableBalance) || 0) + (Number(user.playingBalance) || 0);
 };
 
 /**

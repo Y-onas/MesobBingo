@@ -13,8 +13,10 @@ const handleTelebirr = async (ctx) => {
     ctx.session.state = SESSION_STATES.AWAITING_DEPOSIT_SMS;
     ctx.session.depositMethod = 'telebirr';
     
-    const telebirrNumber = await configService.get('telebirr_number', '0900000000');
-    const telebirrName = await configService.get('telebirr_account_name', 'Mesob Bingo');
+    // Get active Telebirr account from payment_accounts table
+    const account = await configService.getActiveAccount('telebirr');
+    const telebirrNumber = account?.accountNumber || '0900000000';
+    const telebirrName = account?.accountName || 'Mesob Bingo';
     const minDeposit = await configService.get('min_deposit', 50);
 
     const message = await configService.getMessage('msg_deposit_telebirr', {
@@ -40,8 +42,10 @@ const handleCBE = async (ctx) => {
     ctx.session.state = SESSION_STATES.AWAITING_DEPOSIT_SMS;
     ctx.session.depositMethod = 'cbe';
     
-    const cbeAccount = await configService.get('cbe_account', '1000000000000');
-    const cbeAccountName = await configService.get('cbe_account_name', 'Mesob Bingo');
+    // Get active CBE account from payment_accounts table
+    const account = await configService.getActiveAccount('cbe');
+    const cbeAccount = account?.accountNumber || '1000000000000';
+    const cbeAccountName = account?.accountName || 'Mesob Bingo';
     const minDeposit = await configService.get('min_deposit', 50);
 
     const message = await configService.getMessage('msg_deposit_cbe', {

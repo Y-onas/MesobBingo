@@ -28,13 +28,16 @@ const ROLE_HIERARCHY = {
 // ─── In-Memory Admin Cache ──────────────────────────────────────────
 let adminCache = new Map();
 let adminCacheExpiry = 0;
+let lastSuccessfulRefresh = Date.now();
 const ADMIN_CACHE_TTL = 60000; // 1 minute
+const MAX_STALE_TTL = 300000; // 5 minutes - force cache miss if stale for too long
 
 /**
  * Refresh admin cache if expired
+ * @returns {boolean} true if cache was refreshed, false if using existing cache
  */
 const refreshAdminCache = async () => {
-  if (Date.now() < adminCacheExpiry) return;
+  if (Date.now() < adminCacheExpiry) return false;
 
   try {
     const allAdmins = await db.select()
@@ -46,9 +49,20 @@ const refreshAdminCache = async () => {
       adminCache.set(admin.telegramId, admin);
     }
     adminCacheExpiry = Date.now() + ADMIN_CACHE_TTL;
+    lastSuccessfulRefresh = Date.now();
+    return true;
   } catch (error) {
-    logger.error('Error refreshing admin cache:', error);
-    // Keep using stale cache if DB fails
+    const staleness = Date.now() - lastSuccessfulRefresh;
+    logger.error(`Error refreshing admin cache (stale for ${Math.round(staleness / 1000)}s):`, error);
+    
+    // Force cache miss if stale for too long (security: revoked admins shouldn't be cached indefinitely)
+    if (staleness > MAX_STALE_TTL) {
+      logger.error('Admin cache exceeded max staleness, forcing cache miss');
+      adminCache.clear();
+      adminCacheExpiry = 0;
+    }
+    
+    return false;
   }
 };
 
@@ -57,8 +71,14 @@ const refreshAdminCache = async () => {
  */
 const isAdmin = async (userId) => {
   try {
-    await refreshAdminCache();
+    const didRefresh = await refreshAdminCache();
+    
+    // Check cache first
     if (adminCache.has(userId)) return true;
+
+    // Only do DB fallback if cache was just refreshed (handles race conditions)
+    // Otherwise return false immediately to avoid repeated DB queries for non-admins
+    if (!didRefresh) return false;
 
     // Direct DB check as fallback (handles race condition after cache clear)
     const admin = await db.select()

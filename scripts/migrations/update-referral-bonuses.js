@@ -18,34 +18,37 @@ async function updateReferralBonuses() {
   try {
     logger.info('Starting referral bonus update...');
 
-    // Update 50-99.99 tier: 5 → 10
-    const result1 = await db.update(referralTiers)
-      .set({ bonusAmount: 10 })
-      .where(and(
-        eq(referralTiers.minDeposit, 50),
-        eq(referralTiers.maxDeposit, 99.99)
-      ))
-      .returning();
+    // Wrap both updates in a transaction for atomicity
+    const [result1, result2] = await db.transaction(async (tx) => {
+      const r1 = await tx.update(referralTiers)
+        .set({ bonusAmount: 10 })
+        .where(and(
+          eq(referralTiers.minDeposit, 50),
+          eq(referralTiers.maxDeposit, 99.99)
+        ))
+        .returning();
+
+      const r2 = await tx.update(referralTiers)
+        .set({ bonusAmount: 15 })
+        .where(and(
+          eq(referralTiers.minDeposit, 100),
+          eq(referralTiers.maxDeposit, 199.99)
+        ))
+        .returning();
+
+      return [r1, r2];
+    });
 
     if (result1.length > 0) {
-      logger.info('✅ Updated 50-99.99 tier: 5 → 10 Birr');
+      logger.info('✅ Updated 50-99.99 tier: bonus amount set to 10 Birr');
     } else {
-      logger.info('ℹ️  50-99.99 tier not found or already updated');
+      logger.info('ℹ️  50-99.99 tier not found — verify deposit range values in DB');
     }
 
-    // Update 100-199.99 tier: 10 → 15
-    const result2 = await db.update(referralTiers)
-      .set({ bonusAmount: 15 })
-      .where(and(
-        eq(referralTiers.minDeposit, 100),
-        eq(referralTiers.maxDeposit, 199.99)
-      ))
-      .returning();
-
     if (result2.length > 0) {
-      logger.info('✅ Updated 100-199.99 tier: 10 → 15 Birr');
+      logger.info('✅ Updated 100-199.99 tier: bonus amount set to 15 Birr');
     } else {
-      logger.info('ℹ️  100-199.99 tier not found or already updated');
+      logger.info('ℹ️  100-199.99 tier not found — verify deposit range values in DB');
     }
 
     // Verify all tiers
@@ -60,11 +63,12 @@ async function updateReferralBonuses() {
     });
 
     logger.info('\n✅ Referral bonus update complete!');
-    process.exit(0);
   } catch (error) {
     logger.error('❌ Error updating referral bonuses:', error);
-    process.exit(1);
+    throw error;
   }
 }
 
-updateReferralBonuses();
+updateReferralBonuses()
+  .then(() => process.exit(0))
+  .catch(() => process.exit(1));

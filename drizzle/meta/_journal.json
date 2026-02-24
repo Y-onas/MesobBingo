@@ -78,6 +78,27 @@
       "when": 1771424073587,
       "tag": "0010_add_not_null_constraints",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1771424073588,
+      "tag": "0011_add_dynamic_config_constraints",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1771424073589,
+      "tag": "0012_add_referral_tier_constraints",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1771424073590,
+      "tag": "0013_remove_duplicate_payment_config",
+      "breakpoints": true
     }
   ]
 }

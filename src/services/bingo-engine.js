@@ -105,7 +105,7 @@ class BingoEngine {
         return { success: false, error: 'User not found' };
       }
 
-      const totalBalance = Number(user.withdrawableBalance) + Number(user.playingBalance);
+      const totalBalance = (Number(user.withdrawableBalance) || 0) + (Number(user.playingBalance) || 0);
       if (totalBalance < Number(room.entryFee)) {
         return { success: false, error: 'Insufficient balance' };
       }
@@ -271,8 +271,8 @@ class BingoEngine {
         [telegramId]
       );
 
-      const playingBalance = Number(user.playing_balance);
-      const withdrawableBalance = Number(user.withdrawable_balance);
+      const playingBalance = Number(user.playing_balance) || 0;
+      const withdrawableBalance = Number(user.withdrawable_balance) || 0;
       const totalBalance = playingBalance + withdrawableBalance;
 
       // Check if user has enough total balance
